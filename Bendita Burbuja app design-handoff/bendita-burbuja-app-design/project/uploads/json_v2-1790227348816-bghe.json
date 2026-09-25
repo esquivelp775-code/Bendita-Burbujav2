@@ -1,0 +1,2412 @@
+{
+  "_leeme": "Catálogo de Bendita Burbuja v2 (24/09/2026), generado del modelo de costeo. Precios con 'verificado': false son estimados. El inventario arranca en cero: el primer uso es un conteo inicial.",
+  "parametros": {
+    "iva_venta": 0.16,
+    "indirectos_por_bebida": 2.0,
+    "indirectos_incluye": "bolsa, servilleta, gas y luz de preparación (NO incluye equipo: eso sale de Activos)",
+    "merma_default": 0.05,
+    "redondeo_precio": 5,
+    "utilidad_objetivo": {
+      "Soda italiana": 13.25,
+      "default": 17.5
+    },
+    "meta_utilidad_semanal": 6000.0,
+    "bebidas_por_pedido_esperadas": 1.4,
+    "isr_tasa_efectiva_estimada": 0.025,
+    "hora_mano_obra_fuera_de_turno": 50.0,
+    "umbral_reorden_por_prioridad": {
+      "alta": 0.3,
+      "media": 0.25,
+      "baja": 0.2
+    },
+    "zona_horaria": "America/Mexico_City",
+    "moneda": "MXN"
+  },
+  "turnos": [
+    {
+      "nombre": "Mañana entre semana",
+      "dias": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "inicio": "06:00",
+      "fin": "09:00",
+      "hora_mano_obra": 60.0,
+      "estimado": true,
+      "nota": "6-9 am es hora pico de Uber (gente que va al trabajo). $60 es estimado: mídelo dos semanas"
+    },
+    {
+      "nombre": "Tarde entre semana",
+      "dias": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "inicio": "13:30",
+      "fin": "16:30",
+      "hora_mano_obra": 45.0,
+      "estimado": false,
+      "nota": "Hora muerta de Uber"
+    },
+    {
+      "nombre": "Fin de semana",
+      "dias": [
+        6,
+        0
+      ],
+      "inicio": "06:00",
+      "fin": "13:00",
+      "hora_mano_obra": 55.0,
+      "estimado": false,
+      "nota": "La mañana del fin de semana no es pico de Uber"
+    }
+  ],
+  "canales": [
+    {
+      "nombre": "Uber Eats",
+      "tipo": "plataforma",
+      "color": "#5E0B0A",
+      "comision_base": 0.29,
+      "uber_one": 0.01,
+      "uber_one_proporcion_pedidos": 0.5,
+      "marketing": 0.0,
+      "iva_sobre_comision": 0.16,
+      "retencion_isr": 0.025,
+      "retencion_iva": 0.08,
+      "frecuencia_deposito": "semanal",
+      "comision_efectiva": 0.295,
+      "precio": "precio_lista",
+      "nota": "Retenciones LIF 2026 con RFC registrado. Sin RFC: 20 % ISR y 16 % IVA. Confirmar con contador."
+    },
+    {
+      "nombre": "Rappi",
+      "tipo": "plataforma",
+      "color": "#B07A3A",
+      "comision_base": 0.25,
+      "marketing": 0.0,
+      "iva_sobre_comision": 0.16,
+      "retencion_isr": 0.025,
+      "retencion_iva": 0.08,
+      "frecuencia_deposito": "semanal",
+      "comision_efectiva": 0.25,
+      "precio": "precio_lista",
+      "nota": "Mismo precio de lista que Uber; Rappi deja más por la comisión menor."
+    },
+    {
+      "nombre": "Público en general",
+      "tipo": "directo",
+      "color": "#6B4E2E",
+      "descuento_vs_app": 0.15,
+      "envio_cobrado_default": 35.0,
+      "costo_envio_default": 0.0,
+      "precio": "precio_publico",
+      "nota": "Pedidos por WhatsApp o Instagram. Sin intermediario: precio 15 % abajo de la app y aun así deja ~$28 por bebida contra ~$16 en Uber. El envío se cobra aparte."
+    },
+    {
+      "nombre": "Evento",
+      "tipo": "directo",
+      "color": "#44607A",
+      "precio": "precio_evento",
+      "nota": "Precio por bebida y tamaño con escala por volumen (ver 'evento')."
+    }
+  ],
+  "evento": {
+    "minimo_bebidas": 30,
+    "escalas": [
+      {
+        "desde": 30,
+        "hasta": 59,
+        "factor": 1.0,
+        "cargo_servicio": 600
+      },
+      {
+        "desde": 60,
+        "hasta": 99,
+        "factor": 0.95,
+        "cargo_servicio": 500
+      },
+      {
+        "desde": 100,
+        "hasta": 149,
+        "factor": 0.9,
+        "cargo_servicio": 400
+      },
+      {
+        "desde": 150,
+        "hasta": 249,
+        "factor": 0.85,
+        "cargo_servicio": 300
+      },
+      {
+        "desde": 250,
+        "hasta": null,
+        "factor": 0.8,
+        "cargo_servicio": 0
+      }
+    ],
+    "costos_reales": {
+      "traslado": 400.0,
+      "equipo_hielo_desechables": 300.0,
+      "horas_montaje": 3.0
+    },
+    "nota": "El precio de evento parte del precio de lista de cada bebida en su tamaño (que ya sale de su costo de producción) y baja por volumen. No se usa costo + % puro porque abarataría de más el café: la Penitencia Fría cuesta $13 de hacer y a +100 % se vendería en $30 en un evento contra $60 en la app."
+  },
+  "proveedores": [
+    {
+      "nombre": "Ziaba Gourmet",
+      "ciudad": "Puebla",
+      "notas": "Tapioca, polvos. Tarjeta vía PayPal; envía a todo México"
+    },
+    {
+      "nombre": "Café Etrusca",
+      "ciudad": "",
+      "notas": "Catálogo 2026 (jarabes Chillout, tisanas)"
+    },
+    {
+      "nombre": "Barra Pro",
+      "ciudad": "",
+      "notas": "Base moka Chillout; acepta tarjetas"
+    },
+    {
+      "nombre": "COLDAY",
+      "ciudad": "",
+      "notas": "Perlas explosivas"
+    },
+    {
+      "nombre": "Walmart",
+      "ciudad": "Puebla",
+      "notas": "Leches y crema"
+    },
+    {
+      "nombre": "Abasto Vegano",
+      "ciudad": "",
+      "notas": "Oatly Barista por caja"
+    }
+  ],
+  "categorias": [
+    {
+      "nombre": "Soda italiana",
+      "minutos_preparacion": 3,
+      "utilidad_objetivo": 13.25
+    },
+    {
+      "nombre": "Bubble tea",
+      "minutos_preparacion": 4,
+      "utilidad_objetivo": 17.5
+    },
+    {
+      "nombre": "Café frío",
+      "minutos_preparacion": 2,
+      "utilidad_objetivo": 17.5
+    },
+    {
+      "nombre": "Frutal",
+      "minutos_preparacion": 3,
+      "utilidad_objetivo": 17.5
+    }
+  ],
+  "tamanos": [
+    {
+      "nombre": "14 oz",
+      "ml": 414,
+      "factor_escala": 1.0,
+      "costo_vaso": 1.9,
+      "costo_tapa": 1.1,
+      "stock_vasos_inicial": 70,
+      "activo": true,
+      "prioridad_vasos_y_tapas": "alta"
+    },
+    {
+      "nombre": "16 oz",
+      "ml": 473,
+      "factor_escala": 1.14,
+      "costo_vaso": 1.96,
+      "costo_tapa": 1.1,
+      "stock_vasos_inicial": 0,
+      "activo": true,
+      "prioridad_vasos_y_tapas": "alta"
+    },
+    {
+      "nombre": "20 oz",
+      "ml": 591,
+      "factor_escala": 1.43,
+      "costo_vaso": 2.4,
+      "costo_tapa": 1.1,
+      "stock_vasos_inicial": 0,
+      "activo": true,
+      "prioridad_vasos_y_tapas": "alta"
+    }
+  ],
+  "insumos": [
+    {
+      "clave": "jarabe_maracuya",
+      "nombre": "Jarabe agave maracuyá",
+      "categoria": "jarabe",
+      "presentacion": "Botella 1 L",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "ml",
+      "costo_presentacion": 161.5,
+      "iva": 0.16,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.146552,
+      "verificado": true,
+      "fuente": "Nota 08/09/2026",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "jarabe_frambuesa",
+      "nombre": "Jarabe agave frambuesa",
+      "categoria": "jarabe",
+      "presentacion": "Botella 1 L",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "ml",
+      "costo_presentacion": 161.5,
+      "iva": 0.16,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.146552,
+      "verificado": true,
+      "fuente": "Nota 08/09/2026",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "perla_mango",
+      "nombre": "Perla explosiva mango",
+      "categoria": "perla",
+      "presentacion": "Bote 3 kg",
+      "contenido_presentacion": 3000,
+      "contenido_util": 3000,
+      "unidad": "g",
+      "costo_presentacion": 400.0,
+      "iva": 0.16,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.120992,
+      "verificado": true,
+      "fuente": "Compra 08/09/2026; se usa sin escurrir, 30 g por bebida",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "perla_maracuya",
+      "nombre": "Perla explosiva maracuyá",
+      "categoria": "perla",
+      "presentacion": "Bote 1.25 kg",
+      "contenido_presentacion": 1250,
+      "contenido_util": 1250,
+      "unidad": "g",
+      "costo_presentacion": 117.26,
+      "iva": 0.16,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.085125,
+      "verificado": true,
+      "fuente": "Compra 08/09/2026; se usa sin escurrir, 30 g por bebida",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "etiqueta",
+      "nombre": "Etiqueta",
+      "categoria": "empaque",
+      "presentacion": "288 piezas",
+      "contenido_presentacion": 288,
+      "contenido_util": 288,
+      "unidad": "pieza",
+      "costo_presentacion": 360.0,
+      "iva": 0.16,
+      "merma": 0,
+      "costo_unitario_neto": 1.077586,
+      "verificado": false,
+      "fuente": "Sin nota de compra",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "popote",
+      "nombre": "Popote ancho",
+      "categoria": "empaque",
+      "presentacion": "Bolsa 1 kg",
+      "contenido_presentacion": 100,
+      "contenido_util": 100,
+      "unidad": "pieza",
+      "costo_presentacion": 51.0,
+      "iva": 0.16,
+      "merma": 0,
+      "costo_unitario_neto": 0.439655,
+      "verificado": false,
+      "fuente": "Ticket 65932 del 08/09/2026; cantidad sin confirmar — CONTAR",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "botella_mineral",
+      "nombre": "Agua mineral individual",
+      "categoria": "base",
+      "presentacion": "Botella 500 ml",
+      "contenido_presentacion": 1,
+      "contenido_util": 1,
+      "unidad": "pieza",
+      "costo_presentacion": 7.0,
+      "iva": 0.16,
+      "merma": 0,
+      "costo_unitario_neto": 6.034483,
+      "verificado": true,
+      "fuente": "Tienda local 09/09/2026; la más barata",
+      "caduca_abierto_dias": null,
+      "prioridad": "baja",
+      "umbral_reorden": 0.2,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "playo",
+      "nombre": "Playo grado alimenticio",
+      "categoria": "empaque",
+      "presentacion": "Rollo 500 m = 1,000 vasos",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "pieza",
+      "costo_presentacion": 250.0,
+      "iva": 0.16,
+      "merma": 0,
+      "costo_unitario_neto": 0.215517,
+      "verificado": false,
+      "fuente": "Don Playo / genérico — CONFIRMAR. Un rollo industrial de 18 pulgadas cuesta $569 en Walmart pero es demasiado ancho",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "hielo",
+      "nombre": "Hielo en cubo",
+      "categoria": "base",
+      "presentacion": "Bolsa 5 kg",
+      "contenido_presentacion": 5000,
+      "contenido_util": 5000,
+      "unidad": "g",
+      "costo_presentacion": 35.0,
+      "iva": 0.0,
+      "merma": 0.25,
+      "costo_unitario_neto": 0.009333,
+      "verificado": false,
+      "fuente": "Tienda de conveniencia",
+      "caduca_abierto_dias": 2,
+      "prioridad": "baja",
+      "umbral_reorden": 0.2,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "tapioca_seca",
+      "nombre": "Tapioca seca",
+      "categoria": "perla",
+      "presentacion": "Tea Zone 2.72 kg = 90 bebidas",
+      "contenido_presentacion": 2720,
+      "contenido_util": 2720,
+      "unidad": "g",
+      "costo_presentacion": 235.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.090944,
+      "verificado": true,
+      "fuente": "Ziaba Gourmet 16/09/2026. Catálogo Café Etrusca: 3 kg = 100 bebidas usando 30 g antes de cocción",
+      "caduca_abierto_dias": null,
+      "prioridad": "alta",
+      "umbral_reorden": 0.3,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "azucar",
+      "nombre": "Azúcar estándar (almíbar)",
+      "categoria": "base",
+      "presentacion": "Bolsa 1 kg",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "g",
+      "costo_presentacion": 32.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.033684,
+      "verificado": false,
+      "fuente": "Precio típico — CONFIRMAR",
+      "caduca_abierto_dias": null,
+      "prioridad": "baja",
+      "umbral_reorden": 0.2,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "polvo_taro",
+      "nombre": "Polvo taro premium",
+      "categoria": "polvo",
+      "presentacion": "Bolsa 1 kg",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "g",
+      "costo_presentacion": 515.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.542105,
+      "verificado": true,
+      "fuente": "Ziaba Gourmet 16/09/2026",
+      "caduca_abierto_dias": null,
+      "prioridad": "alta",
+      "umbral_reorden": 0.3,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "polvo_matcha",
+      "nombre": "Polvo matcha",
+      "categoria": "polvo",
+      "presentacion": "Bolsa 1 kg",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "g",
+      "costo_presentacion": 485.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.510526,
+      "verificado": true,
+      "fuente": "Ziaba Gourmet 16/09/2026",
+      "caduca_abierto_dias": null,
+      "prioridad": "alta",
+      "umbral_reorden": 0.3,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "polvo_chai",
+      "nombre": "Polvo chai",
+      "categoria": "polvo",
+      "presentacion": "Bolsa 700 g",
+      "contenido_presentacion": 700,
+      "contenido_util": 700,
+      "unidad": "g",
+      "costo_presentacion": 308.8,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.464361,
+      "verificado": true,
+      "fuente": "Precio encontrado por Pablo 16/09/2026 — $441/kg",
+      "caduca_abierto_dias": null,
+      "prioridad": "alta",
+      "umbral_reorden": 0.3,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "te_negro",
+      "nombre": "Té negro a granel",
+      "categoria": "te",
+      "presentacion": "Bolsa 1 kg = 190 bebidas",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "g",
+      "costo_presentacion": 400.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.421053,
+      "verificado": false,
+      "fuente": "Assam/Ceylon comercial — CONFIRMAR con Ziaba o Café Etrusca. El de especialidad (Soy Té) cuesta $1,350/kg y no lo necesitas. Alternativa sin preparar: polvo all-in-one de COLDAY, $368 por 1.5 kg",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "leche",
+      "nombre": "Leche entera",
+      "categoria": "lacteo",
+      "presentacion": "Alpura Selecta 1 L",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "ml",
+      "costo_presentacion": 36.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.037895,
+      "verificado": true,
+      "fuente": "Walmart 16/09/2026",
+      "caduca_abierto_dias": 5,
+      "prioridad": "alta",
+      "umbral_reorden": 0.3,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "leche_desl",
+      "nombre": "Leche deslactosada",
+      "categoria": "lacteo",
+      "presentacion": "Alpura Deslactosada 1 L",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "ml",
+      "costo_presentacion": 31.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.032632,
+      "verificado": true,
+      "fuente": "Walmart 16/09/2026 — sale más barata que la entera",
+      "caduca_abierto_dias": 5,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "avena_oatly",
+      "nombre": "Bebida de avena barista",
+      "categoria": "lacteo",
+      "presentacion": "Oatly Barista 1 L (caja de 6)",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "ml",
+      "costo_presentacion": 56.0,
+      "iva": 0.16,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.050817,
+      "verificado": true,
+      "fuente": "Abasto Vegano mayoreo 16/09/2026 — caja de 6 pz $336",
+      "caduca_abierto_dias": 7,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "cafe_molido",
+      "nombre": "Café molido para cold brew",
+      "categoria": "cafe",
+      "presentacion": "Bolsa 1 kg = 50 bebidas",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "g",
+      "costo_presentacion": 300.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.315789,
+      "verificado": false,
+      "fuente": "Objetivo de Pablo. XicoCafé (sierra de Puebla) publica 1 kg en $329; el orgánico de Chiapas al mayoreo está en $360/kg pero pide 5 kg",
+      "caduca_abierto_dias": null,
+      "prioridad": "alta",
+      "umbral_reorden": 0.3,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "crema_batir",
+      "nombre": "Crema para batir",
+      "categoria": "lacteo",
+      "presentacion": "Lyncott 980 ml",
+      "contenido_presentacion": 980,
+      "contenido_util": 980,
+      "unidad": "ml",
+      "costo_presentacion": 110.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.118153,
+      "verificado": true,
+      "fuente": "Walmart 16/09/2026",
+      "caduca_abierto_dias": 5,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "jarabe_vainilla",
+      "nombre": "Jarabe de vainilla",
+      "categoria": "jarabe",
+      "presentacion": "Chillout agave azul 1 L",
+      "contenido_presentacion": 1000,
+      "contenido_util": 1000,
+      "unidad": "ml",
+      "costo_presentacion": 170.0,
+      "iva": 0.16,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.154265,
+      "verificado": false,
+      "fuente": "Catálogo Café Etrusca IJA-151, misma línea de agave que los tuyos ($161.50) — CONFIRMAR precio. Monin cuesta $279/750 ml",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "base_moka",
+      "nombre": "Base en polvo moka",
+      "categoria": "polvo",
+      "presentacion": "Chillout 2 kg = 40 bebidas",
+      "contenido_presentacion": 2000,
+      "contenido_util": 2000,
+      "unidad": "g",
+      "costo_presentacion": 629.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.331053,
+      "verificado": true,
+      "fuente": "Barra Pro 17/09/2026 — Chillout IBP-201. El moka blanco cuesta $659",
+      "caduca_abierto_dias": null,
+      "prioridad": "alta",
+      "umbral_reorden": 0.3,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    },
+    {
+      "clave": "tisana_frutos",
+      "nombre": "Tisana frutos rojos",
+      "categoria": "te",
+      "presentacion": "Chillout 250 g = 25 bebidas",
+      "contenido_presentacion": 250,
+      "contenido_util": 250,
+      "unidad": "g",
+      "costo_presentacion": 180.0,
+      "iva": 0.0,
+      "merma": 0.05,
+      "costo_unitario_neto": 0.757895,
+      "verificado": false,
+      "fuente": "Catálogo Café Etrusca ITI-104, 10 g por bebida — CONFIRMAR precio",
+      "caduca_abierto_dias": null,
+      "prioridad": "media",
+      "umbral_reorden": 0.25,
+      "stock_objetivo": null,
+      "stock_inicial": 0
+    }
+  ],
+  "leches": [
+    {
+      "nombre": "Entera",
+      "insumo": "leche",
+      "sobreprecio": 0,
+      "default": true
+    },
+    {
+      "nombre": "Deslactosada",
+      "insumo": "leche_desl",
+      "sobreprecio": 0,
+      "default": false
+    },
+    {
+      "nombre": "Avena Oatly",
+      "insumo": "avena_oatly",
+      "sobreprecio": 15,
+      "default": false
+    }
+  ],
+  "bebidas": [
+    {
+      "n": 1,
+      "nombre": "Pecado Tropical",
+      "categoria": "Soda italiana",
+      "descripcion": "Frambuesa burbujeante con perlas de mango que revientan a cada trago. Dulce, frutal y bien fría.",
+      "lleva_leche": false,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "jarabe_frambuesa",
+          "cantidad": 25,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "perla_mango",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 100,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "botella_mineral",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "30 g de perlas de mango al fondo, con su almíbar",
+        "2 bombeos y medio de jarabe de frambuesa",
+        "Hielo hasta la marca",
+        "Tapa, etiqueta y popote",
+        "La botella de agua mineral va aparte, sin abrir"
+      ],
+      "precio_lista": {
+        "14 oz": 65,
+        "16 oz": 70,
+        "20 oz": 75
+      },
+      "precio_sugerido": {
+        "14 oz": 65,
+        "16 oz": 70,
+        "20 oz": 75
+      },
+      "precio_publico": {
+        "14 oz": 55,
+        "16 oz": 60,
+        "20 oz": 65
+      },
+      "costo_produccion": {
+        "14 oz": 20.3,
+        "16 oz": 21.51,
+        "20 oz": 24.27
+      },
+      "utilidad_uber": {
+        "14 oz": 14.06,
+        "16 oz": 15.69,
+        "20 oz": 15.76
+      },
+      "utilidad_rappi": {
+        "14 oz": 16.98,
+        "16 oz": 18.84,
+        "20 oz": 19.13
+      }
+    },
+    {
+      "n": 2,
+      "nombre": "Pasión Prohibida",
+      "categoria": "Soda italiana",
+      "descripcion": "Frambuesa con perlas de maracuyá. Dulce arriba, ácido al morder. La que más se antoja en calor.",
+      "lleva_leche": false,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "jarabe_frambuesa",
+          "cantidad": 25,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "perla_maracuya",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 100,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "botella_mineral",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "30 g de perlas de maracuyá al fondo, con su almíbar",
+        "2 bombeos y medio de jarabe de frambuesa",
+        "Hielo hasta la marca",
+        "Tapa, etiqueta y popote",
+        "La botella de agua mineral va aparte, sin abrir"
+      ],
+      "precio_lista": {
+        "14 oz": 60,
+        "16 oz": 65,
+        "20 oz": 70
+      },
+      "precio_sugerido": {
+        "14 oz": 60,
+        "16 oz": 65,
+        "20 oz": 70
+      },
+      "precio_publico": {
+        "14 oz": 50,
+        "16 oz": 55,
+        "20 oz": 60
+      },
+      "costo_produccion": {
+        "14 oz": 19.23,
+        "16 oz": 20.28,
+        "20 oz": 22.73
+      },
+      "utilidad_uber": {
+        "14 oz": 12.3,
+        "16 oz": 14.08,
+        "20 oz": 14.46
+      },
+      "utilidad_rappi": {
+        "14 oz": 15.0,
+        "16 oz": 17.0,
+        "20 oz": 17.61
+      }
+    },
+    {
+      "n": 3,
+      "nombre": "Milagro Tropical",
+      "categoria": "Soda italiana",
+      "descripcion": "Maracuyá con perlas de mango. Tropical y equilibrada, la más fácil de tomar del menú.",
+      "lleva_leche": false,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "jarabe_maracuya",
+          "cantidad": 25,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "perla_mango",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 100,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "botella_mineral",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "30 g de perlas de mango al fondo, con su almíbar",
+        "2 bombeos y medio de jarabe de maracuyá",
+        "Hielo hasta la marca",
+        "Tapa, etiqueta y popote",
+        "La botella de agua mineral va aparte, sin abrir"
+      ],
+      "precio_lista": {
+        "14 oz": 65,
+        "16 oz": 70,
+        "20 oz": 75
+      },
+      "precio_sugerido": {
+        "14 oz": 65,
+        "16 oz": 70,
+        "20 oz": 75
+      },
+      "precio_publico": {
+        "14 oz": 55,
+        "16 oz": 60,
+        "20 oz": 65
+      },
+      "costo_produccion": {
+        "14 oz": 20.3,
+        "16 oz": 21.51,
+        "20 oz": 24.27
+      },
+      "utilidad_uber": {
+        "14 oz": 14.06,
+        "16 oz": 15.69,
+        "20 oz": 15.76
+      },
+      "utilidad_rappi": {
+        "14 oz": 16.98,
+        "16 oz": 18.84,
+        "20 oz": 19.13
+      }
+    },
+    {
+      "n": 4,
+      "nombre": "Amén de Maracuyá",
+      "categoria": "Soda italiana",
+      "descripcion": "Maracuyá en el jarabe y en la perla. La más intensa y la más ácida. Para quien le gusta fuerte.",
+      "lleva_leche": false,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "jarabe_maracuya",
+          "cantidad": 25,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "perla_maracuya",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 100,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "botella_mineral",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "30 g de perlas de maracuyá al fondo, con su almíbar",
+        "2 bombeos y medio de jarabe de maracuyá",
+        "Hielo hasta la marca",
+        "Tapa, etiqueta y popote",
+        "La botella de agua mineral va aparte, sin abrir"
+      ],
+      "precio_lista": {
+        "14 oz": 60,
+        "16 oz": 65,
+        "20 oz": 70
+      },
+      "precio_sugerido": {
+        "14 oz": 60,
+        "16 oz": 65,
+        "20 oz": 70
+      },
+      "precio_publico": {
+        "14 oz": 50,
+        "16 oz": 55,
+        "20 oz": 60
+      },
+      "costo_produccion": {
+        "14 oz": 19.23,
+        "16 oz": 20.28,
+        "20 oz": 22.73
+      },
+      "utilidad_uber": {
+        "14 oz": 12.3,
+        "16 oz": 14.08,
+        "20 oz": 14.46
+      },
+      "utilidad_rappi": {
+        "14 oz": 15.0,
+        "16 oz": 17.0,
+        "20 oz": 17.61
+      }
+    },
+    {
+      "n": 5,
+      "nombre": "Confesión de Sabores",
+      "categoria": "Soda italiana",
+      "descripcion": "Tú la armas: eliges dos jarabes y la perla que quieras. Cada una sale distinta y ninguna se repite.",
+      "lleva_leche": false,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "jarabe_maracuya",
+          "cantidad": 12,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "jarabe_frambuesa",
+          "cantidad": 13,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "perla_mango",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 100,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "botella_mineral",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "La perla que haya elegido, 30 g al fondo",
+        "Bombeo y medio del jarabe principal",
+        "1 bombeo del segundo jarabe",
+        "Hielo hasta la marca",
+        "Tapa, etiqueta, popote y botella aparte"
+      ],
+      "precio_lista": {
+        "14 oz": 65,
+        "16 oz": 70,
+        "20 oz": 75
+      },
+      "precio_sugerido": {
+        "14 oz": 65,
+        "16 oz": 70,
+        "20 oz": 75
+      },
+      "precio_publico": {
+        "14 oz": 55,
+        "16 oz": 60,
+        "20 oz": 65
+      },
+      "costo_produccion": {
+        "14 oz": 20.3,
+        "16 oz": 21.51,
+        "20 oz": 24.27
+      },
+      "utilidad_uber": {
+        "14 oz": 14.06,
+        "16 oz": 15.69,
+        "20 oz": 15.76
+      },
+      "utilidad_rappi": {
+        "14 oz": 16.98,
+        "16 oz": 18.84,
+        "20 oz": 19.13
+      }
+    },
+    {
+      "n": 6,
+      "nombre": "Taro Celestial",
+      "categoria": "Bubble tea",
+      "descripcion": "Taro con leche y tapioca. Morado pálido, cremoso, entre nuez y vainilla. El clásico que todos piden.",
+      "lleva_leche": true,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "polvo_taro",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "leche",
+          "cantidad": 180,
+          "escala_con_tamano": true,
+          "es_leche": true
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 90,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "tapioca_seca",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "azucar",
+          "cantidad": 12,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "Tapioca ya cocida y en almíbar, 30 g secos por bebida",
+        "Disuelve el polvo de taro en un poco de leche tibia",
+        "Agrega el resto de la leche y bate hasta que no queden grumos",
+        "Tapioca al fondo del vaso, luego el hielo",
+        "Vacía la mezcla encima. Tapa, etiqueta y popote ancho"
+      ],
+      "precio_lista": {
+        "14 oz": 95,
+        "16 oz": 100,
+        "20 oz": 115
+      },
+      "precio_sugerido": {
+        "14 oz": 95,
+        "16 oz": 100,
+        "20 oz": 115
+      },
+      "precio_publico": {
+        "14 oz": 80,
+        "16 oz": 85,
+        "20 oz": 100
+      },
+      "costo_produccion": {
+        "14 oz": 33.1,
+        "16 oz": 36.94,
+        "20 oz": 45.17
+      },
+      "utilidad_uber": {
+        "14 oz": 17.44,
+        "16 oz": 16.43,
+        "20 oz": 16.71
+      },
+      "utilidad_rappi": {
+        "14 oz": 21.71,
+        "16 oz": 20.93,
+        "20 oz": 21.89
+      }
+    },
+    {
+      "n": 7,
+      "nombre": "Matcha Divino",
+      "categoria": "Bubble tea",
+      "descripcion": "Matcha con leche y tapioca. Verde, cremoso y con ese amargor rico que lo hace distinto a todo.",
+      "lleva_leche": true,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "polvo_matcha",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "leche",
+          "cantidad": 180,
+          "escala_con_tamano": true,
+          "es_leche": true
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 90,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "tapioca_seca",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "azucar",
+          "cantidad": 12,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "Tapioca ya cocida y en almíbar, 30 g secos por bebida",
+        "Disuelve el matcha en un poco de leche tibia",
+        "Agrega el resto de la leche y bate bien",
+        "Tapioca al fondo del vaso, luego el hielo",
+        "Vacía la mezcla encima. Tapa, etiqueta y popote ancho"
+      ],
+      "precio_lista": {
+        "14 oz": 95,
+        "16 oz": 100,
+        "20 oz": 115
+      },
+      "precio_sugerido": {
+        "14 oz": 95,
+        "16 oz": 100,
+        "20 oz": 115
+      },
+      "precio_publico": {
+        "14 oz": 80,
+        "16 oz": 85,
+        "20 oz": 100
+      },
+      "costo_produccion": {
+        "14 oz": 32.15,
+        "16 oz": 35.86,
+        "20 oz": 43.81
+      },
+      "utilidad_uber": {
+        "14 oz": 18.39,
+        "16 oz": 17.51,
+        "20 oz": 18.07
+      },
+      "utilidad_rappi": {
+        "14 oz": 22.66,
+        "16 oz": 22.01,
+        "20 oz": 23.24
+      }
+    },
+    {
+      "n": 8,
+      "nombre": "Bendita Original",
+      "categoria": "Bubble tea",
+      "descripcion": "Té negro, leche y tapioca. La receta original de Taiwán, sin polvos ni sabores. Es la que mide si una bubble tea está bien hecha.",
+      "lleva_leche": true,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "te_negro",
+          "cantidad": 5,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "leche",
+          "cantidad": 180,
+          "escala_con_tamano": true,
+          "es_leche": true
+        },
+        {
+          "insumo": "azucar",
+          "cantidad": 8,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 90,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "tapioca_seca",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "azucar",
+          "cantidad": 12,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "Concentrado de té negro de la jarra, bien frío",
+        "Tapioca ya cocida y en almíbar, 30 g secos por bebida",
+        "Tapioca al fondo del vaso, luego el hielo",
+        "Vacía el té y encima la leche, despacio, para que se vea la veta",
+        "Tapa, etiqueta y popote ancho"
+      ],
+      "precio_lista": {
+        "14 oz": 70,
+        "16 oz": 75,
+        "20 oz": 80
+      },
+      "precio_sugerido": {
+        "14 oz": 70,
+        "16 oz": 75,
+        "20 oz": 80
+      },
+      "precio_publico": {
+        "14 oz": 60,
+        "16 oz": 65,
+        "20 oz": 70
+      },
+      "costo_produccion": {
+        "14 oz": 19.21,
+        "16 oz": 21.11,
+        "20 oz": 25.3
+      },
+      "utilidad_uber": {
+        "14 oz": 17.15,
+        "16 oz": 18.09,
+        "20 oz": 16.73
+      },
+      "utilidad_rappi": {
+        "14 oz": 20.3,
+        "16 oz": 21.47,
+        "20 oz": 20.33
+      }
+    },
+    {
+      "n": 9,
+      "nombre": "Chai Bendito",
+      "categoria": "Bubble tea",
+      "descripcion": "Chai con leche y tapioca. Canela, cardamomo y jengibre. Sabe a temporada fría todo el año.",
+      "lleva_leche": true,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "polvo_chai",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "leche",
+          "cantidad": 180,
+          "escala_con_tamano": true,
+          "es_leche": true
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 90,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "tapioca_seca",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "azucar",
+          "cantidad": 12,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "Tapioca ya cocida y en almíbar, 30 g secos por bebida",
+        "Disuelve el polvo de chai en un poco de leche tibia",
+        "Agrega el resto de la leche y bate bien",
+        "Tapioca al fondo del vaso, luego el hielo",
+        "Vacía la mezcla encima. Tapa, etiqueta y popote ancho"
+      ],
+      "precio_lista": {
+        "14 oz": 90,
+        "16 oz": 95,
+        "20 oz": 110
+      },
+      "precio_sugerido": {
+        "14 oz": 90,
+        "16 oz": 95,
+        "20 oz": 110
+      },
+      "precio_publico": {
+        "14 oz": 75,
+        "16 oz": 80,
+        "20 oz": 95
+      },
+      "costo_produccion": {
+        "14 oz": 30.77,
+        "16 oz": 34.28,
+        "20 oz": 41.83
+      },
+      "utilidad_uber": {
+        "14 oz": 16.94,
+        "16 oz": 16.26,
+        "20 oz": 17.21
+      },
+      "utilidad_rappi": {
+        "14 oz": 20.99,
+        "16 oz": 20.53,
+        "20 oz": 22.16
+      }
+    },
+    {
+      "n": 10,
+      "nombre": "Penitencia Fría",
+      "categoria": "Café frío",
+      "descripcion": "Café reposado 16 horas en frío. Negro, sin azúcar y sin perlas. Amargo del bueno, del que no pica. Para los que ya no negocian.",
+      "lleva_leche": false,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "cafe_molido",
+          "cantidad": 20,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 120,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "Cold brew de la tanda de anoche, bien frío",
+        "Hielo hasta la marca",
+        "Llena con el cold brew",
+        "Tapa, etiqueta y popote",
+        "Si lo piden con leche, deja 60 ml de espacio"
+      ],
+      "precio_lista": {
+        "14 oz": 60,
+        "16 oz": 65,
+        "20 oz": 70
+      },
+      "precio_sugerido": {
+        "14 oz": 60,
+        "16 oz": 65,
+        "20 oz": 70
+      },
+      "precio_publico": {
+        "14 oz": 50,
+        "16 oz": 55,
+        "20 oz": 60
+      },
+      "costo_produccion": {
+        "14 oz": 13.48,
+        "16 oz": 14.57,
+        "20 oz": 17.11
+      },
+      "utilidad_uber": {
+        "14 oz": 18.88,
+        "16 oz": 20.62,
+        "20 oz": 20.92
+      },
+      "utilidad_rappi": {
+        "14 oz": 21.58,
+        "16 oz": 23.55,
+        "20 oz": 24.07
+      }
+    },
+    {
+      "n": 11,
+      "nombre": "Gloria de Vainilla",
+      "categoria": "Café frío",
+      "descripcion": "Cold brew con una nube de vainilla encima. Baja despacio, se mezcla sola y cambia de sabor a media bebida. Sin perlas.",
+      "lleva_leche": true,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "cafe_molido",
+          "cantidad": 20,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 110,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "leche",
+          "cantidad": 45,
+          "escala_con_tamano": true,
+          "es_leche": true
+        },
+        {
+          "insumo": "crema_batir",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "jarabe_vainilla",
+          "cantidad": 15,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "Bate leche, crema y jarabe de vainilla hasta que espese",
+        "Hielo en el vaso hasta la marca",
+        "Llena con cold brew dejando 3 cm libres",
+        "Vacía la espuma encima, despacio, para que quede en capa",
+        "Tapa, etiqueta y popote. No revolver"
+      ],
+      "precio_lista": {
+        "14 oz": 70,
+        "16 oz": 75,
+        "20 oz": 85
+      },
+      "precio_sugerido": {
+        "14 oz": 70,
+        "16 oz": 75,
+        "20 oz": 85
+      },
+      "precio_publico": {
+        "14 oz": 60,
+        "16 oz": 65,
+        "20 oz": 70
+      },
+      "costo_produccion": {
+        "14 oz": 20.95,
+        "16 oz": 23.09,
+        "20 oz": 27.79
+      },
+      "utilidad_uber": {
+        "14 oz": 17.08,
+        "16 oz": 17.78,
+        "20 oz": 18.74
+      },
+      "utilidad_rappi": {
+        "14 oz": 20.23,
+        "16 oz": 21.15,
+        "20 oz": 22.57
+      }
+    },
+    {
+      "n": 12,
+      "nombre": "Tentación de Cacao",
+      "categoria": "Café frío",
+      "descripcion": "Cold brew con chocolate y leche. Dulce sin empalagar. Es el café para el que jura que no le gusta el café.",
+      "lleva_leche": true,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "cafe_molido",
+          "cantidad": 18,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "base_moka",
+          "cantidad": 35,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "leche",
+          "cantidad": 120,
+          "escala_con_tamano": true,
+          "es_leche": true
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 95,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "Disuelve la base de moka en un poco de leche tibia",
+        "Agrega el resto de la leche y bate bien",
+        "Hielo en el vaso hasta la marca",
+        "Vacía primero el cold brew, luego la mezcla de moka",
+        "Tapa, etiqueta y popote"
+      ],
+      "precio_lista": {
+        "14 oz": 85,
+        "16 oz": 90,
+        "20 oz": 100
+      },
+      "precio_sugerido": {
+        "14 oz": 85,
+        "16 oz": 90,
+        "20 oz": 100
+      },
+      "precio_publico": {
+        "14 oz": 70,
+        "16 oz": 75,
+        "20 oz": 85
+      },
+      "costo_produccion": {
+        "14 oz": 28.75,
+        "16 oz": 31.98,
+        "20 oz": 38.94
+      },
+      "utilidad_uber": {
+        "14 oz": 17.79,
+        "16 oz": 17.39,
+        "20 oz": 16.1
+      },
+      "utilidad_rappi": {
+        "14 oz": 21.61,
+        "16 oz": 21.44,
+        "20 oz": 20.6
+      }
+    },
+    {
+      "n": 13,
+      "nombre": "Alma Blanca",
+      "categoria": "Café frío",
+      "descripcion": "Cold brew que en vez de agua se infusiona en leche, 16 horas en frío. Sale sedoso, dulce de por sí y sin nada de filo. El café para quien le tiene miedo al café.",
+      "lleva_leche": true,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "cafe_molido",
+          "cantidad": 25,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "leche",
+          "cantidad": 270,
+          "escala_con_tamano": true,
+          "es_leche": true
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 95,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "Tanda aparte: 25 g de café por cada 270 ml de leche, 16 h en refri",
+        "El poso se chupa como 50 ml de leche — por eso se infusiona de más",
+        "Cuela con filtro fino o manta; NUNCA exprimas el poso",
+        "Hielo en el vaso hasta la marca y llena con el cold milk",
+        "Tapa, etiqueta y popote",
+        "OJO: esta tanda dura 48 h en refri, no 4 días como la de agua"
+      ],
+      "precio_lista": {
+        "14 oz": 80,
+        "16 oz": 85,
+        "20 oz": 95
+      },
+      "precio_sugerido": {
+        "14 oz": 80,
+        "16 oz": 85,
+        "20 oz": 95
+      },
+      "precio_publico": {
+        "14 oz": 70,
+        "16 oz": 70,
+        "20 oz": 80
+      },
+      "costo_produccion": {
+        "14 oz": 25.06,
+        "16 oz": 27.77,
+        "20 oz": 33.66
+      },
+      "utilidad_uber": {
+        "14 oz": 18.64,
+        "16 oz": 18.76,
+        "20 oz": 18.54
+      },
+      "utilidad_rappi": {
+        "14 oz": 22.24,
+        "16 oz": 22.59,
+        "20 oz": 22.82
+      }
+    },
+    {
+      "n": 14,
+      "nombre": "Frutos Rojos",
+      "categoria": "Frutal",
+      "descripcion": "Té de frutos rojos con perlas explosivas. Ácido, ligero y sin leche. El más vendido de la categoría.",
+      "lleva_leche": false,
+      "activa": true,
+      "receta": [
+        {
+          "insumo": "tisana_frutos",
+          "cantidad": 12,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "perla_maracuya",
+          "cantidad": 30,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "hielo",
+          "cantidad": 95,
+          "escala_con_tamano": true,
+          "es_leche": false
+        },
+        {
+          "insumo": "popote",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "etiqueta",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        },
+        {
+          "insumo": "playo",
+          "cantidad": 1,
+          "escala_con_tamano": false,
+          "es_leche": false
+        }
+      ],
+      "pasos": [
+        "30 g de perlas explosivas al fondo, con su almíbar",
+        "Hielo hasta la marca",
+        "Llena con la tisana de frutos rojos bien fría",
+        "Tapa, etiqueta y popote ancho",
+        "Se prepara en jarra, no vaso por vaso"
+      ],
+      "precio_lista": {
+        "14 oz": 70,
+        "16 oz": 75,
+        "20 oz": 80
+      },
+      "precio_sugerido": {
+        "14 oz": 70,
+        "16 oz": 75,
+        "20 oz": 80
+      },
+      "precio_publico": {
+        "14 oz": 60,
+        "16 oz": 65,
+        "20 oz": 70
+      },
+      "costo_produccion": {
+        "14 oz": 18.58,
+        "16 oz": 20.38,
+        "20 oz": 24.4
+      },
+      "utilidad_uber": {
+        "14 oz": 18.62,
+        "16 oz": 19.65,
+        "20 oz": 18.47
+      },
+      "utilidad_rappi": {
+        "14 oz": 21.77,
+        "16 oz": 23.02,
+        "20 oz": 22.07
+      }
+    }
+  ],
+  "adicionales": [
+    {
+      "nombre": "Tapioca extra",
+      "precio": 15,
+      "minutos": 0.2,
+      "descripcion": "Otra porción de tapioca negra",
+      "receta": [
+        {
+          "insumo": "tapioca_seca",
+          "cantidad": 30,
+          "es_leche": false,
+          "cambia_por_sabor": false
+        },
+        {
+          "insumo": "azucar",
+          "cantidad": 12,
+          "es_leche": false,
+          "cambia_por_sabor": false
+        }
+      ],
+      "aplica_a_categorias": [
+        "Bubble tea"
+      ],
+      "excluye_bebidas": [],
+      "sabores": null,
+      "sabores_por_categoria": null
+    },
+    {
+      "nombre": "Perlas explosivas extra",
+      "precio": 20,
+      "minutos": 0.2,
+      "descripcion": "Otra cucharada de perlas del sabor que elijas",
+      "receta": [
+        {
+          "insumo": "perla_mango",
+          "cantidad": 30,
+          "es_leche": false,
+          "cambia_por_sabor": true
+        }
+      ],
+      "aplica_a_categorias": [
+        "Soda italiana",
+        "Frutal"
+      ],
+      "excluye_bebidas": [],
+      "sabores": {
+        "Mango": "perla_mango",
+        "Maracuyá": "perla_maracuya"
+      },
+      "sabores_por_categoria": null
+    },
+    {
+      "nombre": "Shot de jarabe",
+      "precio": 10,
+      "minutos": 0.1,
+      "descripcion": "Un bombeo más del sabor que quieras",
+      "receta": [
+        {
+          "insumo": "jarabe_maracuya",
+          "cantidad": 15,
+          "es_leche": false,
+          "cambia_por_sabor": true
+        }
+      ],
+      "aplica_a_categorias": [
+        "Soda italiana",
+        "Frutal",
+        "Café frío",
+        "Bubble tea"
+      ],
+      "excluye_bebidas": [],
+      "sabores": null,
+      "sabores_por_categoria": {
+        "Soda italiana": {
+          "Maracuyá": "jarabe_maracuya",
+          "Frambuesa": "jarabe_frambuesa"
+        },
+        "Frutal": {
+          "Maracuyá": "jarabe_maracuya",
+          "Frambuesa": "jarabe_frambuesa"
+        },
+        "Café frío": {
+          "Vainilla": "jarabe_vainilla"
+        },
+        "Bubble tea": {
+          "Vainilla": "jarabe_vainilla"
+        }
+      }
+    },
+    {
+      "nombre": "Espuma de vainilla",
+      "precio": 20,
+      "minutos": 1.0,
+      "descripcion": "La capa de espuma fría encima de cualquier café",
+      "receta": [
+        {
+          "insumo": "leche",
+          "cantidad": 45,
+          "es_leche": true,
+          "cambia_por_sabor": false
+        },
+        {
+          "insumo": "crema_batir",
+          "cantidad": 30,
+          "es_leche": false,
+          "cambia_por_sabor": false
+        },
+        {
+          "insumo": "jarabe_vainilla",
+          "cantidad": 15,
+          "es_leche": false,
+          "cambia_por_sabor": false
+        }
+      ],
+      "aplica_a_categorias": [
+        "Café frío",
+        "Bubble tea"
+      ],
+      "excluye_bebidas": [
+        "Gloria de Vainilla"
+      ],
+      "sabores": null,
+      "sabores_por_categoria": null
+    },
+    {
+      "nombre": "Versión frappé",
+      "precio": 10,
+      "minutos": 2.0,
+      "descripcion": "La misma bebida licuada con hielo",
+      "receta": [],
+      "aplica_a_categorias": [
+        "Bubble tea",
+        "Café frío"
+      ],
+      "excluye_bebidas": [],
+      "sabores": null,
+      "sabores_por_categoria": null
+    }
+  ],
+  "_nota_leche": "La leche de avena NO es adicional: es opción del selector de leche (+$15).",
+  "botanas": [
+    {
+      "n": 15,
+      "nombre": "Plátano Deshidratado",
+      "descripcion": "Plátano en rodajas, secado despacio y sin freír. Dulce natural, nada más. Crujiente y sin conservadores.",
+      "costo_unitario": 19.0,
+      "precio_lista": 50,
+      "precio_publico": 45,
+      "nota": "Costo real de Pablo: $18-20 la bolsita"
+    },
+    {
+      "n": 16,
+      "nombre": "Malanga Natural",
+      "descripcion": "Malanga en hojuelas delgadas. Más suave que la papa y con sabor a tierra buena. Con sal y ya.",
+      "costo_unitario": 19.0,
+      "precio_lista": 50,
+      "precio_publico": 45,
+      "nota": "Costo real de Pablo: $18-20 la bolsita"
+    }
+  ],
+  "activos": [
+    {
+      "nombre": "Dosificadores de 10 ml (2) y cuchara de bar",
+      "tipo": "equipo",
+      "costo": 237.8,
+      "fecha_compra": "2026-09-08",
+      "vida_util_meses": 12,
+      "valor_rescate": 0,
+      "verificado": true,
+      "fuente": "Nota de compra 08/09/2026"
+    }
+  ],
+  "activos_por_capturar": [
+    "Licuadora",
+    "Ollas para cocer tapioca",
+    "Báscula de cocina",
+    "Hieleras",
+    "Refrigerador (sólo la parte que usa el negocio)",
+    "Jarras y contenedores para cold brew",
+    "Coladores / filtros para cold brew",
+    "Mesa y mantel para barra de eventos",
+    "Selladora de vasos (si la compras)"
+  ],
+  "metas_del_modelo": {
+    "horas_semana": 44.0,
+    "costo_turno_semana": 2345,
+    "equilibrio_bebidas_semana": 111.3,
+    "meta_6000_bebidas_semana": 322.9,
+    "cupo_bebidas_semana": 950,
+    "utilidad_promedio_por_bebida": 18.58,
+    "supuesto": "Horario de 44 h con la mañana entre semana a $60/h. Con el horario anterior de 29 h: equilibrio 69, meta 324, cupo 604."
+  },
+  "pruebas_de_calculo": [
+    {
+      "caso": "Taro Celestial 14 oz, leche entera, Uber Eats, martes 14:00 (tarde, $45/h)",
+      "precio": 95.0,
+      "iva_trasladado": 13.1,
+      "ingreso_sin_iva": 81.9,
+      "comision": 28.03,
+      "iva_de_comision_acreditable": 4.48,
+      "insumos": 27.06,
+      "empaque_popote_etiqueta_playo": 1.73,
+      "vaso_y_tapa": 2.59,
+      "indirectos": 1.72,
+      "minutos": 4,
+      "tarifa_hora": 45.0,
+      "mano_de_obra": 3.0,
+      "utilidad": 17.77,
+      "retencion_isr": 2.05,
+      "retencion_iva": 6.55,
+      "deposito_esperado": 53.89,
+      "efectivo_neto": 15.72,
+      "consumo_inventario": {
+        "polvo_taro": 30.0,
+        "leche": 180.0,
+        "hielo": 90.0,
+        "tapioca_seca": 30.0,
+        "azucar": 12.0,
+        "popote": 1,
+        "etiqueta": 1,
+        "playo": 1
+      },
+      "cuadre": 95.0
+    },
+    {
+      "caso": "Alma Blanca 14 oz, avena + espuma de vainilla (la espuma también va con avena), Rappi, sábado 08:00 ($55/h)",
+      "precio": 115.0,
+      "iva_trasladado": 15.86,
+      "ingreso_sin_iva": 99.14,
+      "comision": 28.75,
+      "iva_de_comision_acreditable": 4.6,
+      "insumos": 30.65,
+      "empaque_popote_etiqueta_playo": 1.73,
+      "vaso_y_tapa": 2.59,
+      "indirectos": 1.72,
+      "minutos": 3.0,
+      "tarifa_hora": 55.0,
+      "mano_de_obra": 2.75,
+      "utilidad": 30.95,
+      "retencion_isr": 2.48,
+      "retencion_iva": 7.93,
+      "deposito_esperado": 71.24,
+      "efectivo_neto": 28.47,
+      "consumo_inventario": {
+        "cafe_molido": 25.0,
+        "avena_oatly": 315.0,
+        "hielo": 95.0,
+        "popote": 1,
+        "etiqueta": 1,
+        "playo": 1,
+        "crema_batir": 30,
+        "jarabe_vainilla": 15
+      },
+      "cuadre": 115.0
+    },
+    {
+      "caso": "Pecado Tropical 16 oz + perlas extra de maracuyá + shot de frambuesa, Público en general, miércoles 07:30 ($60/h)",
+      "precio": 85.0,
+      "iva_trasladado": 11.72,
+      "ingreso_sin_iva": 73.28,
+      "comision": 0.0,
+      "iva_de_comision_acreditable": 0.0,
+      "insumos": 20.17,
+      "empaque_popote_etiqueta_playo": 1.73,
+      "vaso_y_tapa": 2.64,
+      "indirectos": 1.72,
+      "minutos": 3.3,
+      "tarifa_hora": 60.0,
+      "mano_de_obra": 3.3,
+      "utilidad": 43.72,
+      "retencion_isr": 0.0,
+      "retencion_iva": 0.0,
+      "deposito_esperado": 85.0,
+      "efectivo_neto": 43.72,
+      "consumo_inventario": {
+        "jarabe_frambuesa": 43.5,
+        "perla_mango": 34.2,
+        "hielo": 114.0,
+        "botella_mineral": 1,
+        "popote": 1,
+        "etiqueta": 1,
+        "playo": 1,
+        "perla_maracuya": 30
+      },
+      "cuadre": 85.0
+    },
+    {
+      "caso": "Gloria de Vainilla 20 oz, deslactosada, Uber Eats, domingo 09:00 ($55/h)",
+      "precio": 85.0,
+      "iva_trasladado": 11.72,
+      "ingreso_sin_iva": 73.28,
+      "comision": 25.08,
+      "iva_de_comision_acreditable": 4.01,
+      "insumos": 20.98,
+      "empaque_popote_etiqueta_playo": 1.73,
+      "vaso_y_tapa": 3.02,
+      "indirectos": 1.72,
+      "minutos": 2,
+      "tarifa_hora": 55.0,
+      "mano_de_obra": 1.83,
+      "utilidad": 18.92,
+      "retencion_isr": 1.83,
+      "retencion_iva": 5.86,
+      "deposito_esperado": 48.22,
+      "efectivo_neto": 17.08,
+      "consumo_inventario": {
+        "cafe_molido": 28.6,
+        "hielo": 157.3,
+        "leche_desl": 64.35,
+        "crema_batir": 42.9,
+        "jarabe_vainilla": 21.45,
+        "popote": 1,
+        "etiqueta": 1,
+        "playo": 1
+      },
+      "cuadre": 85.0
+    },
+    {
+      "caso": "Penitencia Fría 14 oz dentro de un evento de 100 bebidas (factor 0.90), sábado 18:00 (fuera de turno, $50/h)",
+      "precio": 55.0,
+      "iva_trasladado": 7.59,
+      "ingreso_sin_iva": 47.41,
+      "comision": 0.0,
+      "iva_de_comision_acreditable": 0.0,
+      "insumos": 7.44,
+      "empaque_popote_etiqueta_playo": 1.73,
+      "vaso_y_tapa": 2.59,
+      "indirectos": 1.72,
+      "minutos": 2,
+      "tarifa_hora": 50.0,
+      "mano_de_obra": 1.67,
+      "utilidad": 32.27,
+      "retencion_isr": 0.0,
+      "retencion_iva": 0.0,
+      "deposito_esperado": 55.0,
+      "efectivo_neto": 32.27,
+      "consumo_inventario": {
+        "cafe_molido": 20.0,
+        "hielo": 120.0,
+        "popote": 1,
+        "etiqueta": 1,
+        "playo": 1
+      },
+      "cuadre": 55.0
+    }
+  ],
+  "cotizacion_evento_ejemplo": {
+    "bebidas": 100,
+    "escala": {
+      "desde": 100,
+      "hasta": 149,
+      "factor": 0.9,
+      "cargo_servicio": 400
+    },
+    "lineas": [
+      {
+        "bebida": "Taro Celestial",
+        "tamano": "16 oz",
+        "cantidad": 30,
+        "precio_lista_app": 100,
+        "precio_evento": 90,
+        "costo_produccion": 36.94,
+        "utilidad_por_bebida": 37.31
+      },
+      {
+        "bebida": "Matcha Divino",
+        "tamano": "16 oz",
+        "cantidad": 10,
+        "precio_lista_app": 100,
+        "precio_evento": 90,
+        "costo_produccion": 35.86,
+        "utilidad_por_bebida": 38.39
+      },
+      {
+        "bebida": "Pecado Tropical",
+        "tamano": "16 oz",
+        "cantidad": 20,
+        "precio_lista_app": 70,
+        "precio_evento": 65,
+        "costo_produccion": 21.51,
+        "utilidad_por_bebida": 32.03
+      },
+      {
+        "bebida": "Amén de Maracuyá",
+        "tamano": "16 oz",
+        "cantidad": 10,
+        "precio_lista_app": 65,
+        "precio_evento": 60,
+        "costo_produccion": 20.28,
+        "utilidad_por_bebida": 28.94
+      },
+      {
+        "bebida": "Penitencia Fría",
+        "tamano": "16 oz",
+        "cantidad": 15,
+        "precio_lista_app": 65,
+        "precio_evento": 60,
+        "costo_produccion": 14.57,
+        "utilidad_por_bebida": 35.49
+      },
+      {
+        "bebida": "Alma Blanca",
+        "tamano": "16 oz",
+        "cantidad": 15,
+        "precio_lista_app": 85,
+        "precio_evento": 75,
+        "costo_produccion": 27.77,
+        "utilidad_por_bebida": 35.22
+      }
+    ],
+    "subtotal_bebidas": 7525.0,
+    "cargo_servicio": 400,
+    "total_cliente": 7925.0,
+    "utilidad": 2988.68,
+    "utilidad_por_bebida": 29.89,
+    "mismas_bebidas_en_apps": 1852.13,
+    "conviene": true
+  }
+}
