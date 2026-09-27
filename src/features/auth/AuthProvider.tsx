@@ -4,7 +4,16 @@ import { modoLocal } from '../../lib/modo'
 import { cargarTodo, limpiar } from '../../lib/store/remoteStore'
 import { supabase } from '../../lib/supabase/client'
 import { useStore } from '../../lib/store/useStore'
-import { AuthScreen } from './AuthScreen'
+
+const autoEmail = import.meta.env.VITE_AUTO_LOGIN_EMAIL
+const autoPassword = import.meta.env.VITE_AUTO_LOGIN_PASSWORD
+
+async function entrarSola(): Promise<Session | null> {
+  if (!autoEmail || !autoPassword) return null
+  const { data, error } = await supabase.auth.signInWithPassword({ email: autoEmail, password: autoPassword })
+  if (error) return null
+  return data.session
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(modoLocal ? null : undefined)
@@ -13,12 +22,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (modoLocal) return
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    let detenido = false
+
+    async function iniciar() {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        if (!detenido) setSession(data.session)
+        return
+      }
+      const nueva = await entrarSola()
+      if (!detenido) setSession(nueva)
+    }
+    iniciar()
+
     const { data: sub } = supabase.auth.onAuthStateChange((_event, nuevaSesion) => {
       setSession(nuevaSesion)
       if (!nuevaSesion) limpiar()
     })
-    return () => sub.subscription.unsubscribe()
+    return () => {
+      detenido = true
+      sub.subscription.unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
@@ -30,11 +54,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   if (modoLocal) return <>{children}</>
 
-  if (session === undefined) {
-    return <div className="min-h-screen flex items-center justify-center text-muted">Cargando…</div>
-  }
   if (!session) {
-    return <AuthScreen />
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-2 text-muted">
+        <span>Abriendo…</span>
+        <button className="text-xs underline" onClick={() => window.location.reload()}>
+          Reintentar
+        </button>
+      </div>
+    )
   }
   if (cargando) {
     return <div className="min-h-screen flex items-center justify-center text-muted">Abriendo la caja…</div>
