@@ -289,8 +289,27 @@ describe('cotizacion_evento_ejemplo — 100 bebidas de 16 oz', () => {
   })
 })
 
-describe('precio sugerido — escalera por tamaño (5.9)', () => {
-  it('reproduce el precio de lista de Pecado Tropical en los tres tamaños', () => {
+/** Utilidad en Uber Eats a un precio dado, para verificar la brecha mínima entre tamaños (regla v3). */
+function utilidadEnUber(bebida: (typeof bebidas)[string], tamano: (typeof tamanos)[string], lecheElegida: ReturnType<typeof construirLeches>[string] | undefined, precio: number) {
+  return desgloseLinea({
+    fechaHora: new Date('2026-09-27T12:00:00'),
+    canalTipo: 'plataforma',
+    bebida,
+    tamano,
+    lecheElegida,
+    adicionalesElegidos: [],
+    precioApp: precio,
+    insumos,
+    adicionalesCatalogo: adicionales,
+    categorias,
+    parametros,
+    turnos,
+    configPlataforma: uberEats,
+  }).utilidad
+}
+
+describe('precio sugerido — escalera por tamaño (5.9, regla v3)', () => {
+  it('Pecado Tropical: precios múltiplos de 5 y el 20 oz deja al menos $2.50 más que el 16 oz en Uber', () => {
     const tamanosOrdenados = [tamanos['14 oz'], tamanos['16 oz'], tamanos['20 oz']]
     const sugerido = precioSugerido({
       bebida: bebidas['Pecado Tropical'],
@@ -301,12 +320,16 @@ describe('precio sugerido — escalera por tamaño (5.9)', () => {
       comisionEfectivaUber: uberEats.comisionEfectiva,
       tarifaManoDeObraPromedio: 50,
     })
-    expect(sugerido['14 oz']).toBe(65)
-    expect(sugerido['16 oz']).toBe(70)
-    expect(sugerido['20 oz']).toBe(75)
+    for (const t of tamanosOrdenados) expect(sugerido[t.nombre] % 5).toBe(0)
+
+    const u16 = utilidadEnUber(bebidas['Pecado Tropical'], tamanos['16 oz'], undefined, sugerido['16 oz'])
+    const u14 = utilidadEnUber(bebidas['Pecado Tropical'], tamanos['14 oz'], undefined, sugerido['14 oz'])
+    const u20 = utilidadEnUber(bebidas['Pecado Tropical'], tamanos['20 oz'], undefined, sugerido['20 oz'])
+    expect(u16 - u14).toBeGreaterThanOrEqual(2.5 - 1e-9)
+    expect(u20 - u16).toBeGreaterThanOrEqual(2.5 - 1e-9)
   })
 
-  it('reproduce el precio de lista de Taro Celestial en los tres tamaños', () => {
+  it('Taro Celestial: precios múltiplos de 5 y el 20 oz deja al menos $2.50 más que el 16 oz en Uber', () => {
     const tamanosOrdenados = [tamanos['14 oz'], tamanos['16 oz'], tamanos['20 oz']]
     const sugerido = precioSugerido({
       bebida: bebidas['Taro Celestial'],
@@ -318,8 +341,12 @@ describe('precio sugerido — escalera por tamaño (5.9)', () => {
       comisionEfectivaUber: uberEats.comisionEfectiva,
       tarifaManoDeObraPromedio: 50,
     })
-    expect(sugerido['14 oz']).toBe(95)
-    expect(sugerido['16 oz']).toBe(100)
-    expect(sugerido['20 oz']).toBe(115)
+    for (const t of tamanosOrdenados) expect(sugerido[t.nombre] % 5).toBe(0)
+
+    const u16 = utilidadEnUber(bebidas['Taro Celestial'], tamanos['16 oz'], leches['Entera'], sugerido['16 oz'])
+    const u14 = utilidadEnUber(bebidas['Taro Celestial'], tamanos['14 oz'], leches['Entera'], sugerido['14 oz'])
+    const u20 = utilidadEnUber(bebidas['Taro Celestial'], tamanos['20 oz'], leches['Entera'], sugerido['20 oz'])
+    expect(u16 - u14).toBeGreaterThanOrEqual(2.5 - 1e-9)
+    expect(u20 - u16).toBeGreaterThanOrEqual(2.5 - 1e-9)
   })
 })

@@ -217,12 +217,14 @@ async function cargarTamanos() {
   tamanoIdPorNombre = {}
   tamanoNombrePorId = {}
   for (const row of data ?? []) {
+    const cierreIds: string[] = row.insumo_cierre_ids ?? (row.insumo_cierre_id ? [row.insumo_cierre_id] : [])
     tamanos[row.nombre] = {
       nombre: row.nombre,
       ml: row.ml,
       factorEscala: row.factor_escala,
       vasoInsumoClave: insumoClavePorId[row.insumo_vaso_id],
-      cierreInsumoClave: insumoClavePorId[row.insumo_cierre_id],
+      cierreInsumoClaves: cierreIds.map((id) => insumoClavePorId[id]),
+      canales: row.canales ?? undefined,
       activo: row.activo,
     }
     tamanoIdPorNombre[row.nombre] = row.id
@@ -641,6 +643,7 @@ export function calcularDesgloseItem(canalNombre: string, item: Omit<ItemCarrito
   return desgloseLinea({
     fechaHora: item.fechaHora,
     canalTipo: canal.tipo,
+    canalNombre: canal.nombre,
     bebida: item.bebida,
     tamano: item.tamano,
     lecheElegida: item.lecheElegida,
@@ -681,10 +684,10 @@ export async function registrarPedidoConItems(input: CerrarPedidoInput): Promise
     const mermaPorClave: Record<string, number> = {}
     for (const c of consumo) mermaPorClave[c.insumoClave] = estado.insumos[c.insumoClave]?.merma ?? 0
     const movimientos = movimientosDesdeConsumo(consumo, insumoIdPorClave, mermaPorClave)
-    movimientos.push(
-      { insumo_id: insumoIdPorClave[item.tamano.vasoInsumoClave], cantidad: -1 },
-      { insumo_id: insumoIdPorClave[item.tamano.cierreInsumoClave], cantidad: -1 },
-    )
+    movimientos.push({ insumo_id: insumoIdPorClave[item.tamano.vasoInsumoClave], cantidad: -1 })
+    for (const clave of item.tamano.cierreInsumoClaves) {
+      movimientos.push({ insumo_id: insumoIdPorClave[clave], cantidad: -1 })
+    }
 
     return {
       id: crypto.randomUUID(),

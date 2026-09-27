@@ -1,19 +1,12 @@
-// Adapta datos_iniciales_bendita_1.json a los tipos de calculos.ts.
-// Usado por las pruebas y por scripts/seed-from-json.ts. No es parte del runtime de la app.
+// Adapta datos_bendita_v3.json a los tipos de calculos.ts. Usado por las pruebas v3 y por el
+// script de migración de catálogo. No es parte del runtime de la app (ver también fixtures.ts,
+// que sigue vigente para las pruebas v2).
 import type { Adicional, Bebida, Categoria, Insumo, Leche, Parametros, Tamano, Turno } from './calculos'
-import datos from '../../datos_iniciales_bendita_1.json'
+import datos from '../../datos_bendita_v3.json'
 
 type Json = typeof datos
 
-function slug(nombre: string): string {
-  return nombre
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-}
-
-export function construirParametros(d: Json = datos): Parametros {
+export function construirParametrosV3(d: Json = datos): Parametros {
   return {
     ivaVenta: d.parametros.iva_venta,
     indirectosPorBebida: d.parametros.indirectos_por_bebida,
@@ -29,7 +22,7 @@ export function construirParametros(d: Json = datos): Parametros {
   }
 }
 
-export function construirTurnos(d: Json = datos): Turno[] {
+export function construirTurnosV3(d: Json = datos): Turno[] {
   return d.turnos.map((t) => ({
     nombre: t.nombre,
     dias: t.dias,
@@ -40,15 +33,23 @@ export function construirTurnos(d: Json = datos): Turno[] {
   }))
 }
 
-/** insumoClave → Insumo, incluyendo un vaso y un cierre sintéticos por cada tamaño (sección 8). */
-export function construirInsumos(d: Json = datos): Record<string, Insumo> {
+function slug(nombre: string): string {
+  return nombre
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+}
+
+/** insumoClave → Insumo, incluyendo un vaso sintético por cada tamaño (el cierre usa insumos reales: tapa/playo/pelicula_sello). */
+export function construirInsumosV3(d: Json = datos): Record<string, Insumo> {
   const insumos: Record<string, Insumo> = {}
   for (const i of d.insumos) {
     insumos[i.clave] = {
       clave: i.clave,
       nombre: i.nombre,
       categoria: i.categoria,
-      costoUnitarioNeto: i.costo_unitario_neto,
+      costoUnitarioNeto: i.costo_unitario_neto!,
       merma: i.merma,
       prioridad: i.prioridad as Insumo['prioridad'],
       umbralReorden: i.umbral_reorden,
@@ -58,7 +59,6 @@ export function construirInsumos(d: Json = datos): Record<string, Insumo> {
   }
   for (const t of d.tamanos) {
     const vasoClave = `vaso_${slug(t.nombre)}`
-    const cierreClave = `cierre_${slug(t.nombre)}`
     insumos[vasoClave] = {
       clave: vasoClave,
       nombre: `Vaso ${t.nombre}`,
@@ -67,19 +67,17 @@ export function construirInsumos(d: Json = datos): Record<string, Insumo> {
       merma: 0,
       prioridad: t.prioridad_vasos_y_tapas as Insumo['prioridad'],
     }
-    insumos[cierreClave] = {
-      clave: cierreClave,
-      nombre: `Tapa ${t.nombre}`,
-      categoria: 'empaque',
-      costoUnitarioNeto: t.costo_tapa / (1 + d.parametros.iva_venta),
-      merma: 0,
-      prioridad: t.prioridad_vasos_y_tapas as Insumo['prioridad'],
-    }
   }
   return insumos
 }
 
-export function construirTamanos(d: Json = datos): Record<string, Tamano> {
+/** Mapa tamaño → claves de insumo de cierre, por catálogo v3 (sección 1 de 4_prompt_claude_code_v3.md). */
+function cierresDeTamano(nombreTamano: string): string[] {
+  if (nombreTamano === '20 oz') return ['pelicula_sello']
+  return ['tapa', 'playo']
+}
+
+export function construirTamanosV3(d: Json = datos): Record<string, Tamano> {
   const tamanos: Record<string, Tamano> = {}
   for (const t of d.tamanos) {
     tamanos[t.nombre] = {
@@ -87,13 +85,14 @@ export function construirTamanos(d: Json = datos): Record<string, Tamano> {
       ml: t.ml,
       factorEscala: t.factor_escala,
       vasoInsumoClave: `vaso_${slug(t.nombre)}`,
-      cierreInsumoClaves: [`cierre_${slug(t.nombre)}`],
+      cierreInsumoClaves: cierresDeTamano(t.nombre),
+      canales: t.canales,
     }
   }
   return tamanos
 }
 
-export function construirCategorias(d: Json = datos): Record<string, Categoria> {
+export function construirCategoriasV3(d: Json = datos): Record<string, Categoria> {
   const categorias: Record<string, Categoria> = {}
   for (const c of d.categorias) {
     const utilidadObjetivo = (d.parametros.utilidad_objetivo as Record<string, number>)[c.nombre] ?? d.parametros.utilidad_objetivo.default
@@ -106,7 +105,7 @@ export function construirCategorias(d: Json = datos): Record<string, Categoria> 
   return categorias
 }
 
-export function construirLeches(d: Json = datos): Record<string, Leche> {
+export function construirLechesV3(d: Json = datos): Record<string, Leche> {
   const leches: Record<string, Leche> = {}
   for (const l of d.leches) {
     leches[l.nombre] = {
@@ -119,7 +118,7 @@ export function construirLeches(d: Json = datos): Record<string, Leche> {
   return leches
 }
 
-export function construirBebidas(d: Json = datos): Record<string, Bebida> {
+export function construirBebidasV3(d: Json = datos): Record<string, Bebida> {
   const bebidas: Record<string, Bebida> = {}
   for (const b of d.bebidas) {
     bebidas[b.nombre] = {
@@ -137,19 +136,19 @@ export function construirBebidas(d: Json = datos): Record<string, Bebida> {
   return bebidas
 }
 
-export function precioListaDe(nombreBebida: string, tamano: string, d: Json = datos): number {
+export function precioListaDeV3(nombreBebida: string, tamano: string, d: Json = datos): number {
   const b = d.bebidas.find((x) => x.nombre === nombreBebida)
   if (!b) throw new Error(`Bebida desconocida: ${nombreBebida}`)
   return (b.precio_lista as Record<string, number>)[tamano]
 }
 
-export function precioPublicoDe(nombreBebida: string, tamano: string, d: Json = datos): number {
+export function precioPublicoDeV3(nombreBebida: string, tamano: string, d: Json = datos): number {
   const b = d.bebidas.find((x) => x.nombre === nombreBebida)
   if (!b) throw new Error(`Bebida desconocida: ${nombreBebida}`)
   return (b.precio_publico as Record<string, number>)[tamano]
 }
 
-export function construirAdicionales(d: Json = datos): Record<string, Adicional> {
+export function construirAdicionalesV3(d: Json = datos): Record<string, Adicional> {
   const adicionales: Record<string, Adicional> = {}
   for (const a of d.adicionales) {
     adicionales[a.nombre] = {
@@ -166,12 +165,13 @@ export function construirAdicionales(d: Json = datos): Record<string, Adicional>
       excluyeBebidas: a.excluye_bebidas,
       sabores: a.sabores ?? undefined,
       saboresPorCategoria: a.sabores_por_categoria ?? undefined,
+      canales: (a as any).canales ?? undefined,
     }
   }
   return adicionales
 }
 
-export function construirConfigPlataforma(nombreCanal: string, d: Json = datos) {
+export function construirConfigPlataformaV3(nombreCanal: string, d: Json = datos) {
   const c = d.canales.find((x) => x.nombre === nombreCanal)
   if (!c || !('comision_efectiva' in c)) throw new Error(`Canal de plataforma desconocido: ${nombreCanal}`)
   return {
@@ -182,13 +182,4 @@ export function construirConfigPlataforma(nombreCanal: string, d: Json = datos) 
   }
 }
 
-export function construirConfigPublico(d: Json = datos) {
-  const c = d.canales.find((x) => x.nombre === 'Público en general') as any
-  return {
-    descuentoVsApp: c.descuento_vs_app as number,
-    envioCobradoDefault: c.envio_cobrado_default as number,
-    costoEnvioDefault: c.costo_envio_default as number,
-  }
-}
-
-export { datos }
+export { datos as datosV3 }

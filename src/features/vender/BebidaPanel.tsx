@@ -13,7 +13,9 @@ interface Props {
 }
 
 export function BebidaPanel({ bebida, canalNombre, factorEvento, onAgregar, onCerrar }: Props) {
-  const tamanos = useStore((s) => Object.values(s.tamanos).filter((t) => t.activo))
+  const tamanos = useStore((s) =>
+    Object.values(s.tamanos).filter((t) => t.activo && (!t.canales || t.canales.includes(canalNombre))),
+  )
   const leches = useStore((s) => Object.values(s.leches))
   const adicionalesCatalogo = useStore((s) => s.adicionales)
   const ultimoTamano = useStore((s) => s.ultimoTamano)
@@ -28,8 +30,8 @@ export function BebidaPanel({ bebida, canalNombre, factorEvento, onAgregar, onCe
   const [cantidad, setCantidad] = useState(1)
 
   const adicionalesDisponibles = useMemo(
-    () => Object.values(adicionalesCatalogo).filter((a) => a.activo && adicionalAplica(a, bebida)),
-    [adicionalesCatalogo, bebida],
+    () => Object.values(adicionalesCatalogo).filter((a) => a.activo && adicionalAplica(a, bebida, canalNombre)),
+    [adicionalesCatalogo, bebida, canalNombre],
   )
 
   const tamano = tamanos.find((t) => t.nombre === tamanoNombre)

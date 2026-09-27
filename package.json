@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
-    "seed:sql": "tsx scripts/seed-from-json.ts"
+    "seed:sql": "tsx scripts/seed-from-json.ts",
+    "seed:v3:sql": "tsx scripts/seed-v3-from-json.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

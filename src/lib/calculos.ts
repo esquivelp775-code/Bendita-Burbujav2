@@ -23,7 +23,10 @@ export interface Tamano {
   ml: number
   factorEscala: number
   vasoInsumoClave: string
-  cierreInsumoClave: string
+  /** Insumos que se descuentan al cerrar el vaso (p. ej. tapa+playo, o sólo película de selladora). */
+  cierreInsumoClaves: string[]
+  /** Nombres de canal donde este tamaño puede venderse. Si no se especifica, aplica a todos. */
+  canales?: string[]
 }
 
 export interface Categoria {
@@ -71,6 +74,8 @@ export interface Adicional {
   sabores?: Record<string, string>
   /** Mapa categoría → sabor → insumoClave, cuando el sabor depende de la categoría de la bebida. */
   saboresPorCategoria?: Record<string, Record<string, string>>
+  /** Nombres de canal donde este adicional puede ofrecerse. Si no se especifica, aplica a todos. */
+  canales?: string[]
 }
 
 export interface AdicionalElegido {
@@ -185,9 +190,12 @@ export function tarifaManoDeObra(
 
 // ─── Reglas de adicionales ──────────────────────────────────────────────
 
-/** Un adicional sólo puede ofrecerse si su categoría aplica y la bebida no está excluida. */
-export function adicionalAplica(adicional: Adicional, bebida: Bebida): boolean {
-  return adicional.aplicaACategorias.includes(bebida.categoriaNombre) && !adicional.excluyeBebidas.includes(bebida.nombre)
+/** Un adicional sólo puede ofrecerse si su categoría aplica, la bebida no está excluida y el canal lo permite. */
+export function adicionalAplica(adicional: Adicional, bebida: Bebida, canalNombre?: string): boolean {
+  if (!adicional.aplicaACategorias.includes(bebida.categoriaNombre)) return false
+  if (adicional.excluyeBebidas.includes(bebida.nombre)) return false
+  if (adicional.canales && canalNombre && !adicional.canales.includes(canalNombre)) return false
+  return true
 }
 
 /** Resuelve el insumo real de un sabor elegido para un adicional, según la categoría de la bebida. */
@@ -223,11 +231,12 @@ function resolverAdicionalesElegidos(
   adicionalesElegidos: AdicionalElegido[],
   adicionalesCatalogo: Record<string, Adicional>,
   bebida: Bebida,
+  canalNombre?: string,
 ): AdicionalResuelto[] {
   return adicionalesElegidos.map((el) => {
     const adicional = adicionalesCatalogo[el.nombre]
     if (!adicional) throw new Error(`Adicional desconocido: ${el.nombre}`)
-    if (!adicionalAplica(adicional, bebida)) throw new Error(`"${adicional.nombre}" no aplica a "${bebida.nombre}"`)
+    if (!adicionalAplica(adicional, bebida, canalNombre)) throw new Error(`"${adicional.nombre}" no aplica a "${bebida.nombre}"`)
     return { adicional, sabor: el.sabor }
   })
 }
@@ -283,9 +292,13 @@ function costosPorConsumo(consumo: ConsumoInsumo[], insumos: Record<string, Insu
 
 function vasoTapaCosto(tamano: Tamano, insumos: Record<string, Insumo>): number {
   const vaso = insumos[tamano.vasoInsumoClave]
-  const cierre = insumos[tamano.cierreInsumoClave]
-  if (!vaso || !cierre) throw new Error(`Vaso/cierre no configurados para el tamaño "${tamano.nombre}"`)
-  return vaso.costoUnitarioNeto + cierre.costoUnitarioNeto
+  if (!vaso) throw new Error(`Vaso no configurado para el tamaño "${tamano.nombre}"`)
+  const cierreTotal = tamano.cierreInsumoClaves.reduce((acc, clave) => {
+    const cierre = insumos[clave]
+    if (!cierre) throw new Error(`Cierre "${clave}" no configurado para el tamaño "${tamano.nombre}"`)
+    return acc + cierre.costoUnitarioNeto
+  }, 0)
+  return vaso.costoUnitarioNeto + cierreTotal
 }
 
 function minutosLinea(categoria: Categoria, adicionalesResueltos: AdicionalResuelto[]): number {
@@ -309,7 +322,9 @@ export function movimientosInventarioDeLinea(
     return { insumoClave, cantidadFisica: -cantidad / (1 - insumo.merma) }
   })
   movimientos.push({ insumoClave: tamano.vasoInsumoClave, cantidadFisica: -1 })
-  movimientos.push({ insumoClave: tamano.cierreInsumoClave, cantidadFisica: -1 })
+  for (const clave of tamano.cierreInsumoClaves) {
+    movimientos.push({ insumoClave: clave, cantidadFisica: -1 })
+  }
   return movimientos
 }
 
@@ -343,6 +358,8 @@ export function precioPorCanal(input: PrecioPorCanalInput): number {
 export interface DesgloseLineaInput {
   fechaHora: Date
   canalTipo: CanalTipo
+  /** Nombre del canal (p. ej. "Rappi", "Público en general"), usado para filtrar adicionales por canal. */
+  canalNombre?: string
   bebida: Bebida
   tamano: Tamano
   lecheElegida?: Leche
@@ -388,6 +405,7 @@ export function desgloseLinea(input: DesgloseLineaInput): DesgloseLinea {
   const {
     fechaHora,
     canalTipo,
+    canalNombre,
     bebida,
     tamano,
     lecheElegida,
@@ -405,7 +423,7 @@ export function desgloseLinea(input: DesgloseLineaInput): DesgloseLinea {
     fueraDeTurno,
   } = input
 
-  const adicionalesResueltos = resolverAdicionalesElegidos(adicionalesElegidos, adicionalesCatalogo, bebida)
+  const adicionalesResueltos = resolverAdicionalesElegidos(adicionalesElegidos, adicionalesCatalogo, bebida, canalNombre)
 
   const extraLeche = bebida.llevaLeche && lecheElegida ? lecheElegida.sobreprecio : 0
   const sumaAdicionales = adicionalesResueltos.reduce((acc, a) => acc + a.adicional.precio, 0)
@@ -638,13 +656,17 @@ export interface PrecioSugeridoInput {
   tarifaManoDeObraPromedio: number
 }
 
-/** Precio sugerido por tamaño, con escalera: cada tamaño ≥ el anterior + $5. Fórmula 5.9. */
+/**
+ * Precio sugerido por tamaño, con escalera: cada tamaño debe dejar en Uber al menos $2.50 más de
+ * utilidad que el tamaño anterior, subiendo de $5 en $5 hasta cumplirlo. Fórmula 5.9 (v3).
+ */
 export function precioSugerido(input: PrecioSugeridoInput): Record<string, number> {
   const { bebida, tamanos, lecheDefault, categoria, insumos, parametros, comisionEfectivaUber, tarifaManoDeObraPromedio } = input
   const denominador = 1 / (1 + parametros.ivaVenta) - comisionEfectivaUber
+  const brechaMinimaEntreTamanos = 2.5
 
   const resultado: Record<string, number> = {}
-  let anterior: number | null = null
+  let anterior: { utilidad: number } | null = null
 
   for (const tamano of tamanos) {
     const consumo = resolverLineasConsumo(bebida, tamano, bebida.llevaLeche ? lecheDefault : undefined, [])
@@ -655,9 +677,15 @@ export function precioSugerido(input: PrecioSugeridoInput): Record<string, numbe
     const costoTotal = insumosTotal + empaqueTotal + vasoTapaTotal + indirectos + manoDeObra
 
     let sugerido = redondeo5((costoTotal + categoria.utilidadObjetivo) / denominador)
-    if (anterior != null && sugerido < anterior + 5) sugerido = anterior + 5
+    let utilidad = sugerido * denominador - costoTotal
+    if (anterior != null) {
+      while (utilidad < anterior.utilidad + brechaMinimaEntreTamanos) {
+        sugerido += 5
+        utilidad = sugerido * denominador - costoTotal
+      }
+    }
     resultado[tamano.nombre] = sugerido
-    anterior = sugerido
+    anterior = { utilidad }
   }
 
   return resultado
