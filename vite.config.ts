@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: ['assets/logo-bendita.jpeg'],
       manifest: {
         name: 'Bendita Burbuja',
@@ -22,6 +23,14 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,jpeg,png,svg,ico}'],
+        // Sin esto, un service worker viejo puede quedarse sirviendo un index.html que apunta
+        // a JS/CSS de un deploy anterior ya borrado de Netlify — pantalla en blanco permanente
+        // hasta que el usuario borre datos del sitio a mano. skipWaiting + clientsClaim hacen
+        // que la versión nueva tome control de inmediato en vez de esperar a que se cierren
+        // todas las pestañas, y cleanupOutdatedCaches borra el caché de la versión anterior.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
       },
     }),
   ],
