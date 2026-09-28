@@ -4,6 +4,8 @@
 
 begin;
 
+select set_config('request.jwt.claims', json_build_object('sub', 'c79aeab6-ac16-47d9-a777-a25d739013f2')::text, true);
+
 alter table tamanos add column if not exists canales text[];
 
 alter table tamanos add column if not exists insumo_cierre_ids uuid[];

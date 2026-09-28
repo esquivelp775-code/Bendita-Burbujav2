@@ -34,6 +34,10 @@ lines.push('-- Generado por scripts/seed-v3-from-json.ts — no editar a mano, r
 lines.push('-- Migración de catálogo v3: selladora, cierre por tamaño, canales por tamaño/adicional, insumos y precios nuevos.')
 lines.push('begin;')
 
+// El SQL Editor no corre con una sesión autenticada, así que auth.uid() (que usan las funciones
+// security invoker como registrar_compra) da null. Se fija manualmente para esta transacción.
+lines.push(`select set_config('request.jwt.claims', json_build_object('sub', '${ownerId}')::text, true);`)
+
 // ── 1. Esquema: columnas nuevas (idempotente) ──────────────────────────────
 lines.push(`alter table tamanos add column if not exists canales text[];`)
 lines.push(`alter table tamanos add column if not exists insumo_cierre_ids uuid[];`)
