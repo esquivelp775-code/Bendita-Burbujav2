@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { adicionalAplica, type AdicionalElegido, type Bebida } from '../../lib/calculos'
+import { adicionalAplica, tamanosVendibles, type AdicionalElegido, type Bebida } from '../../lib/calculos'
 import { formatoMoneda } from '../../lib/format'
-import { calcularDesgloseItem, type ItemCarrito } from '../../lib/store/remoteStore'
+import { calcularDesgloseItem, existenciaInsumo, type ItemCarrito } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
 
 interface Props {
@@ -14,7 +14,14 @@ interface Props {
 
 export function BebidaPanel({ bebida, canalNombre, factorEvento, onAgregar, onCerrar }: Props) {
   const tamanos = useStore((s) =>
-    Object.values(s.tamanos).filter((t) => t.activo && (!t.canales || t.canales.includes(canalNombre))),
+    tamanosVendibles(
+      Object.values(s.tamanos)
+        .filter((t) => t.activo)
+        .sort((a, b) => a.ml - b.ml),
+      canalNombre,
+      s.insumos,
+      existenciaInsumo,
+    ),
   )
   const leches = useStore((s) => Object.values(s.leches))
   const adicionalesCatalogo = useStore((s) => s.adicionales)

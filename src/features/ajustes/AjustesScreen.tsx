@@ -1,6 +1,7 @@
 import {
   actualizarConfigPlataforma,
   actualizarConfigPublico,
+  actualizarMargenPublico,
   setAdicionalActivo,
   setBebidaActiva,
   setCanalActivo,
@@ -27,6 +28,7 @@ export function AjustesScreen() {
   const tamanos = useStore((s) => Object.values(s.tamanos))
   const bebidas = useStore((s) => Object.values(s.bebidas))
   const adicionales = useStore((s) => Object.values(s.adicionales))
+  const parametros = useStore((s) => s.parametros)
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-6 max-w-3xl mx-auto">
@@ -80,7 +82,27 @@ export function AjustesScreen() {
               {configPublico && (
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <label className="flex flex-col gap-1">
-                    Descuento vs. app
+                    Margen mínimo (%)
+                    <input
+                      type="number"
+                      step="0.5"
+                      className="h-9 border border-border rounded px-2 bg-bg"
+                      value={Math.round(parametros.margenPublicoMin * 1000) / 10}
+                      onChange={(e) => actualizarMargenPublico({ margenPublicoMin: Number(e.target.value) / 100 }).catch(console.error)}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    Margen máximo (%)
+                    <input
+                      type="number"
+                      step="0.5"
+                      className="h-9 border border-border rounded px-2 bg-bg"
+                      value={Math.round(parametros.margenPublicoMax * 1000) / 10}
+                      onChange={(e) => actualizarMargenPublico({ margenPublicoMax: Number(e.target.value) / 100 }).catch(console.error)}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    Descuento de adicionales vs. app
                     <input
                       type="number"
                       step="0.01"

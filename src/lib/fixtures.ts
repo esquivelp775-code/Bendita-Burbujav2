@@ -26,6 +26,9 @@ export function construirParametros(d: Json = datos): Parametros {
       media: d.parametros.umbral_reorden_por_prioridad.media,
       baja: d.parametros.umbral_reorden_por_prioridad.baja,
     },
+    // No vienen en este JSON; el rango de público llegó en v3.1.
+    margenPublicoMin: 0.27,
+    margenPublicoMax: 0.34,
   }
 }
 

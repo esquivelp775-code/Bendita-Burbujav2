@@ -15,10 +15,11 @@ import type {
   Insumo,
   Leche,
   Parametros,
+  RegistroPrecio,
   Tamano,
   Turno,
 } from '../calculos'
-import { desgloseLinea, evaluarAlertasReorden, resolverLineasConsumo } from '../calculos'
+import { desgloseLinea, evaluarAlertasReorden, precioVigenteEn, resolverLineasConsumo } from '../calculos'
 import { supabase } from '../supabase/client'
 import {
   cancelarPedido as rpcCancelarPedido,
@@ -113,6 +114,8 @@ function estadoVacio(): EstadoStore {
       horaManoDeObraFueraDeTurno: 50,
       metaUtilidadSemanal: 6000,
       umbralReordenPorPrioridad: { alta: 0.3, media: 0.25, baja: 0.2 },
+      margenPublicoMin: 0.27,
+      margenPublicoMax: 0.34,
     },
     turnos: [],
     canales: [],
@@ -147,6 +150,7 @@ let tamanoIdPorNombre: Record<string, string> = {}
 let tamanoNombrePorId: Record<string, string> = {}
 let canalIdPorNombre: Record<string, string> = {}
 let canalNombrePorId: Record<string, string> = {}
+let parametrosId: string | undefined
 let adicionalIdPorNombre: Record<string, string> = {}
 let lecheIdPorNombre: Record<string, string> = {}
 let categoriaIdPorNombre: Record<string, string> = {}
@@ -194,6 +198,7 @@ async function cargarInsumos() {
       umbralReorden: row.umbral_reorden,
       stockObjetivo: row.stock_objetivo,
       caducaAbiertoDias: row.caduca_abierto_dias,
+      recompra: row.recompra ?? true,
     }
   }
   return insumos
@@ -349,19 +354,28 @@ async function cargarAdicionales() {
 }
 
 async function cargarPrecios() {
-  const { data, error } = await supabase.from('precios').select('*').order('vigente_desde', { ascending: false })
+  const { data, error } = await supabase.from('precios').select('*')
   if (error) throw error
+  // Historial completo por bebida × tamaño × canal; el vigente es el más reciente que ya aplica hoy
+  // (un precio con vigencia futura espera su fecha, y ninguno anterior se sobrescribe).
+  const historial = new Map<string, { canal: string; bebida: string; tamano: string; registros: RegistroPrecio[] }>()
+  for (const row of data ?? []) {
+    const bebida = bebidaNombrePorId[row.bebida_id]
+    const tamano = tamanoNombrePorId[row.tamano_id]
+    if (!bebida || !tamano) continue
+    const llave = `${row.canal_tipo}|${bebida}|${tamano}`
+    if (!historial.has(llave)) historial.set(llave, { canal: row.canal_tipo, bebida, tamano, registros: [] })
+    historial.get(llave)!.registros.push({ precio: row.precio, manual: row.manual, vigenteDesde: row.vigente_desde })
+  }
   const preciosApp: EstadoStore['preciosApp'] = {}
   const preciosPublico: EstadoStore['preciosPublico'] = {}
-  for (const row of data ?? []) {
-    const bebidaNombre = bebidaNombrePorId[row.bebida_id]
-    const tamanoNombre = tamanoNombrePorId[row.tamano_id]
-    if (!bebidaNombre || !tamanoNombre) continue
-    const bucket = row.canal_tipo === 'app' ? preciosApp : preciosPublico
-    bucket[bebidaNombre] ??= {}
-    if (bucket[bebidaNombre][tamanoNombre] === undefined) {
-      bucket[bebidaNombre][tamanoNombre] = { precio: row.precio, manual: row.manual }
-    }
+  const ahora = new Date()
+  for (const { canal, bebida, tamano, registros } of historial.values()) {
+    const vigente = precioVigenteEn(registros, ahora)
+    if (!vigente) continue
+    const bucket = canal === 'app' ? preciosApp : preciosPublico
+    bucket[bebida] ??= {}
+    bucket[bebida][tamano] = { precio: vigente.precio, manual: vigente.manual }
   }
   return { preciosApp, preciosPublico }
 }
@@ -409,6 +423,7 @@ async function cargarCanalesYConfig() {
 async function cargarParametros(): Promise<Parametros> {
   const { data, error } = await supabase.from('parametros').select('*').limit(1).single()
   if (error) throw error
+  parametrosId = data.id
   return {
     ivaVenta: data.iva_venta,
     indirectosPorBebida: data.indirectos_por_bebida,
@@ -417,6 +432,8 @@ async function cargarParametros(): Promise<Parametros> {
     horaManoDeObraFueraDeTurno: data.hora_mano_obra_fuera_turno,
     metaUtilidadSemanal: data.meta_utilidad_semanal,
     umbralReordenPorPrioridad: { alta: data.umbral_alta, media: data.umbral_media, baja: data.umbral_baja },
+    margenPublicoMin: data.margen_publico_min ?? 0.27,
+    margenPublicoMax: data.margen_publico_max ?? 0.34,
   }
 }
 
@@ -625,6 +642,16 @@ export async function actualizarConfigPlataforma(canalNombre: string, cambios: P
   const { error } = await supabase.from('config_plataforma').update(patch).eq('canal_id', canalIdPorNombre[canalNombre])
   if (error) throw error
   set((s) => ({ ...s, configPlataformaPorCanal: { ...s.configPlataformaPorCanal, [canalNombre]: { ...s.configPlataformaPorCanal[canalNombre], ...cambios } } }))
+}
+
+/** Hoy sólo el rango de margen de Público se edita desde Ajustes. */
+export async function actualizarMargenPublico(cambios: Partial<Pick<Parametros, 'margenPublicoMin' | 'margenPublicoMax'>>) {
+  const patch: Record<string, number> = {}
+  if (cambios.margenPublicoMin != null) patch.margen_publico_min = cambios.margenPublicoMin
+  if (cambios.margenPublicoMax != null) patch.margen_publico_max = cambios.margenPublicoMax
+  const { error } = await supabase.from('parametros').update(patch).eq('id', parametrosId)
+  if (error) throw error
+  set((s) => ({ ...s, parametros: { ...s.parametros, ...cambios } }))
 }
 
 export async function actualizarConfigPublico(canalNombre: string, cambios: Partial<ConfigPublico>) {

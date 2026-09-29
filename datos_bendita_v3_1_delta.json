@@ -1,0 +1,290 @@
+{
+ "_leeme": "Delta v3.1 (29/09/2026) sobre datos_bendita_v3.json. Sólo trae lo que cambia: precios a público, reglas de precio público, canales del 14 oz y reglas de inventario del vaso de 14 oz. Las porciones por tamaño son las mismas del v3 (receta base de 14 oz × factor del tamaño) y vienen aquí sólo para verificar que la app descuenta bien.",
+ "vigente_desde": "2026-09-29",
+ "regla_precio_publico": {
+  "antes": "precio_publico = precio_lista × 0.85, redondeado a $5",
+  "ahora": "margen objetivo sobre el precio de venta entre 27 % y 34 %, redondeado a $5, cada tamaño ≥ el anterior + $5; misma lista para las 5 sodas y para Taro/Matcha/Chai",
+  "margen_min": 0.27,
+  "margen_max": 0.34,
+  "redondeo": 5,
+  "formula_margen": "utilidad = precio/1.16 − costo_produccion − mano_de_obra; margen = utilidad / precio",
+  "excepciones_aceptadas": [
+   "Pasión Prohibida y Amén de Maracuyá: 34.5 % (16 oz) y 36.6 % (20 oz), por mantener un solo precio de sodas",
+   "Penitencia Fría: 38 % (16 oz) y 40 % (20 oz), porque el escalón mínimo de $5 no deja bajar más"
+  ]
+ },
+ "tamanos_cambios": {
+  "14 oz": {
+   "canales_antes": ["Evento"],
+   "canales_ahora": ["Público en general", "Evento"],
+   "cierre": "tapa+playo (sin cambio)",
+   "recompra": false,
+   "nota": "Pablo no va a recomprar vasos de 14 oz: se venden hasta acabarse. No generar aviso de compra para vaso_14; cuando el stock llegue a 0, desactivar el 14 oz en Público y Evento y avisar."
+  }
+ },
+ "canal_publico": { "nombre": "Público en general", "tamanos": ["14 oz", "16 oz", "20 oz"], "envio": "se cobra aparte (sin cambio)" },
+ "bebidas": [
+  {
+   "nombre": "Pecado Tropical", "categoria": "Soda italiana",
+   "precio_publico_anterior": { "14 oz": 50, "16 oz": 55, "20 oz": 65 },
+   "precio_publico_nuevo": { "14 oz": 40, "16 oz": 45, "20 oz": 50 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 11.16, "margen_reposicion": 0.279, "utilidad_costo_compra": 11.16, "margen_compra": 0.279 },
+    "16 oz": { "utilidad_costo_reposicion": 14.28, "margen_reposicion": 0.317, "utilidad_costo_compra": 14.28, "margen_compra": 0.317 },
+    "20 oz": { "utilidad_costo_reposicion": 16.77, "margen_reposicion": 0.335, "utilidad_costo_compra": 16.77, "margen_compra": 0.335 }
+   },
+   "porciones_por_tamano": {
+    "jarabe_frambuesa": { "14 oz": 25.0, "16 oz": 28.5, "20 oz": 35.75 },
+    "perla_mango": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "hielo": { "14 oz": 100.0, "16 oz": 114.0, "20 oz": 143.0 },
+    "botella_mineral": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Pasión Prohibida", "categoria": "Soda italiana",
+   "precio_publico_anterior": { "14 oz": 50, "16 oz": 55, "20 oz": 65 },
+   "precio_publico_nuevo": { "14 oz": 40, "16 oz": 45, "20 oz": 50 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 12.23, "margen_reposicion": 0.306, "utilidad_costo_compra": 12.23, "margen_compra": 0.306 },
+    "16 oz": { "utilidad_costo_reposicion": 15.51, "margen_reposicion": 0.345, "utilidad_costo_compra": 15.51, "margen_compra": 0.345 },
+    "20 oz": { "utilidad_costo_reposicion": 18.31, "margen_reposicion": 0.366, "utilidad_costo_compra": 18.31, "margen_compra": 0.366 }
+   },
+   "porciones_por_tamano": {
+    "jarabe_frambuesa": { "14 oz": 25.0, "16 oz": 28.5, "20 oz": 35.75 },
+    "perla_maracuya": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "hielo": { "14 oz": 100.0, "16 oz": 114.0, "20 oz": 143.0 },
+    "botella_mineral": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Milagro Tropical", "categoria": "Soda italiana",
+   "precio_publico_anterior": { "14 oz": 50, "16 oz": 55, "20 oz": 65 },
+   "precio_publico_nuevo": { "14 oz": 40, "16 oz": 45, "20 oz": 50 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 11.16, "margen_reposicion": 0.279, "utilidad_costo_compra": 11.16, "margen_compra": 0.279 },
+    "16 oz": { "utilidad_costo_reposicion": 14.28, "margen_reposicion": 0.317, "utilidad_costo_compra": 14.28, "margen_compra": 0.317 },
+    "20 oz": { "utilidad_costo_reposicion": 16.77, "margen_reposicion": 0.335, "utilidad_costo_compra": 16.77, "margen_compra": 0.335 }
+   },
+   "porciones_por_tamano": {
+    "jarabe_maracuya": { "14 oz": 25.0, "16 oz": 28.5, "20 oz": 35.75 },
+    "perla_mango": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "hielo": { "14 oz": 100.0, "16 oz": 114.0, "20 oz": 143.0 },
+    "botella_mineral": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Amén de Maracuyá", "categoria": "Soda italiana",
+   "precio_publico_anterior": { "14 oz": 50, "16 oz": 55, "20 oz": 65 },
+   "precio_publico_nuevo": { "14 oz": 40, "16 oz": 45, "20 oz": 50 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 12.23, "margen_reposicion": 0.306, "utilidad_costo_compra": 12.23, "margen_compra": 0.306 },
+    "16 oz": { "utilidad_costo_reposicion": 15.51, "margen_reposicion": 0.345, "utilidad_costo_compra": 15.51, "margen_compra": 0.345 },
+    "20 oz": { "utilidad_costo_reposicion": 18.31, "margen_reposicion": 0.366, "utilidad_costo_compra": 18.31, "margen_compra": 0.366 }
+   },
+   "porciones_por_tamano": {
+    "jarabe_maracuya": { "14 oz": 25.0, "16 oz": 28.5, "20 oz": 35.75 },
+    "perla_maracuya": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "hielo": { "14 oz": 100.0, "16 oz": 114.0, "20 oz": 143.0 },
+    "botella_mineral": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Confesión de Sabores", "categoria": "Soda italiana",
+   "precio_publico_anterior": { "14 oz": 50, "16 oz": 55, "20 oz": 65 },
+   "precio_publico_nuevo": { "14 oz": 40, "16 oz": 45, "20 oz": 50 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 11.16, "margen_reposicion": 0.279, "utilidad_costo_compra": 11.16, "margen_compra": 0.279 },
+    "16 oz": { "utilidad_costo_reposicion": 14.28, "margen_reposicion": 0.317, "utilidad_costo_compra": 14.28, "margen_compra": 0.317 },
+    "20 oz": { "utilidad_costo_reposicion": 16.77, "margen_reposicion": 0.335, "utilidad_costo_compra": 16.77, "margen_compra": 0.335 }
+   },
+   "porciones_por_tamano": {
+    "jarabe_maracuya": { "14 oz": 12.0, "16 oz": 13.68, "20 oz": 17.16 },
+    "jarabe_frambuesa": { "14 oz": 13.0, "16 oz": 14.82, "20 oz": 18.59 },
+    "perla_mango": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "hielo": { "14 oz": 100.0, "16 oz": 114.0, "20 oz": 143.0 },
+    "botella_mineral": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Taro Celestial", "categoria": "Bubble tea",
+   "precio_publico_anterior": { "14 oz": 70, "16 oz": 75, "20 oz": 90 },
+   "precio_publico_nuevo": { "14 oz": 50, "16 oz": 55, "20 oz": 65 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 14.69, "margen_reposicion": 0.294, "utilidad_costo_compra": 11.16, "margen_compra": 0.223 },
+    "16 oz": { "utilidad_costo_reposicion": 16.38, "margen_reposicion": 0.298, "utilidad_costo_compra": 12.35, "margen_compra": 0.225 },
+    "20 oz": { "utilidad_costo_reposicion": 20.19, "margen_reposicion": 0.311, "utilidad_costo_compra": 15.13, "margen_compra": 0.233 }
+   },
+   "porciones_por_tamano": {
+    "polvo_taro": { "14 oz": 8.77, "16 oz": 10.0, "20 oz": 12.54 },
+    "leche": { "14 oz": 180.0, "16 oz": 205.2, "20 oz": 257.4 },
+    "hielo": { "14 oz": 90.0, "16 oz": 102.6, "20 oz": 128.7 },
+    "tapioca_seca": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "azucar": { "14 oz": 12.0, "16 oz": 13.68, "20 oz": 17.16 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Matcha Divino", "categoria": "Bubble tea",
+   "precio_publico_anterior": { "14 oz": 70, "16 oz": 75, "20 oz": 90 },
+   "precio_publico_nuevo": { "14 oz": 50, "16 oz": 55, "20 oz": 65 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 13.62, "margen_reposicion": 0.272, "utilidad_costo_compra": 10.08, "margen_compra": 0.202 },
+    "16 oz": { "utilidad_costo_reposicion": 15.15, "margen_reposicion": 0.275, "utilidad_costo_compra": 11.12, "margen_compra": 0.202 },
+    "20 oz": { "utilidad_costo_reposicion": 18.65, "margen_reposicion": 0.287, "utilidad_costo_compra": 13.6, "margen_compra": 0.209 }
+   },
+   "porciones_por_tamano": {
+    "polvo_matcha": { "14 oz": 4.0, "16 oz": 4.56, "20 oz": 5.72 },
+    "azucar": [ { "14 oz": 15.0, "16 oz": 17.1, "20 oz": 21.45 }, { "14 oz": 12.0, "16 oz": 13.68, "20 oz": 17.16 } ],
+    "leche": { "14 oz": 180.0, "16 oz": 205.2, "20 oz": 257.4 },
+    "hielo": { "14 oz": 90.0, "16 oz": 102.6, "20 oz": 128.7 },
+    "tapioca_seca": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Bendita Original", "categoria": "Bubble tea",
+   "precio_publico_anterior": { "14 oz": 60, "16 oz": 65, "20 oz": 70 },
+   "precio_publico_nuevo": { "14 oz": 40, "16 oz": 45, "20 oz": 50 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 12.56, "margen_reposicion": 0.314, "utilidad_costo_compra": 9.02, "margen_compra": 0.225 },
+    "16 oz": { "utilidad_costo_reposicion": 15.15, "margen_reposicion": 0.337, "utilidad_costo_compra": 11.12, "margen_compra": 0.247 },
+    "20 oz": { "utilidad_costo_reposicion": 16.54, "margen_reposicion": 0.331, "utilidad_costo_compra": 11.48, "margen_compra": 0.23 }
+   },
+   "porciones_por_tamano": {
+    "te_negro": { "14 oz": 5.0, "16 oz": 5.7, "20 oz": 7.15 },
+    "leche": { "14 oz": 180.0, "16 oz": 205.2, "20 oz": 257.4 },
+    "azucar": [ { "14 oz": 8.0, "16 oz": 9.12, "20 oz": 11.44 }, { "14 oz": 12.0, "16 oz": 13.68, "20 oz": 17.16 } ],
+    "hielo": { "14 oz": 90.0, "16 oz": 102.6, "20 oz": 128.7 },
+    "tapioca_seca": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Chai Bendito", "categoria": "Bubble tea",
+   "precio_publico_anterior": { "14 oz": 70, "16 oz": 75, "20 oz": 90 },
+   "precio_publico_nuevo": { "14 oz": 50, "16 oz": 55, "20 oz": 65 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 14.69, "margen_reposicion": 0.294, "utilidad_costo_compra": 11.16, "margen_compra": 0.223 },
+    "16 oz": { "utilidad_costo_reposicion": 16.38, "margen_reposicion": 0.298, "utilidad_costo_compra": 12.35, "margen_compra": 0.225 },
+    "20 oz": { "utilidad_costo_reposicion": 20.19, "margen_reposicion": 0.311, "utilidad_costo_compra": 15.13, "margen_compra": 0.233 }
+   },
+   "porciones_por_tamano": {
+    "polvo_chai": { "14 oz": 8.77, "16 oz": 10.0, "20 oz": 12.54 },
+    "leche": { "14 oz": 180.0, "16 oz": 205.2, "20 oz": 257.4 },
+    "hielo": { "14 oz": 90.0, "16 oz": 102.6, "20 oz": 128.7 },
+    "tapioca_seca": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "azucar": { "14 oz": 12.0, "16 oz": 13.68, "20 oz": 17.16 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Penitencia Fría", "categoria": "Café frío",
+   "precio_publico_anterior": { "14 oz": 45, "16 oz": 50, "20 oz": 60 },
+   "precio_publico_nuevo": { "14 oz": 30, "16 oz": 35, "20 oz": 40 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 10.2, "margen_reposicion": 0.34, "utilidad_costo_compra": 10.2, "margen_compra": 0.34 },
+    "16 oz": { "utilidad_costo_reposicion": 13.44, "margen_reposicion": 0.384, "utilidad_costo_compra": 13.44, "margen_compra": 0.384 },
+    "20 oz": { "utilidad_costo_reposicion": 16.16, "margen_reposicion": 0.404, "utilidad_costo_compra": 16.16, "margen_compra": 0.404 }
+   },
+   "porciones_por_tamano": {
+    "cafe_molido": { "14 oz": 20.0, "16 oz": 22.8, "20 oz": 28.6 },
+    "hielo": { "14 oz": 120.0, "16 oz": 136.8, "20 oz": 171.6 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Gloria de Vainilla", "categoria": "Café frío",
+   "precio_publico_anterior": { "14 oz": 60, "16 oz": 65, "20 oz": 75 },
+   "precio_publico_nuevo": { "14 oz": 40, "16 oz": 45, "20 oz": 50 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 11.64, "margen_reposicion": 0.291, "utilidad_costo_compra": 11.64, "margen_compra": 0.291 },
+    "16 oz": { "utilidad_costo_reposicion": 13.87, "margen_reposicion": 0.308, "utilidad_costo_compra": 13.87, "margen_compra": 0.308 },
+    "20 oz": { "utilidad_costo_reposicion": 14.5, "margen_reposicion": 0.29, "utilidad_costo_compra": 14.5, "margen_compra": 0.29 }
+   },
+   "porciones_por_tamano": {
+    "cafe_molido": { "14 oz": 20.0, "16 oz": 22.8, "20 oz": 28.6 },
+    "hielo": { "14 oz": 110.0, "16 oz": 125.4, "20 oz": 157.3 },
+    "leche": { "14 oz": 45.0, "16 oz": 51.3, "20 oz": 64.35 },
+    "crema_batir": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "jarabe_vainilla": { "14 oz": 15.0, "16 oz": 17.1, "20 oz": 21.45 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Tentación de Cacao", "categoria": "Café frío",
+   "precio_publico_anterior": { "14 oz": 70, "16 oz": 75, "20 oz": 95 },
+   "precio_publico_nuevo": { "14 oz": 55, "16 oz": 60, "20 oz": 70 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 17.24, "margen_reposicion": 0.313, "utilidad_costo_compra": 17.24, "margen_compra": 0.313 },
+    "16 oz": { "utilidad_costo_reposicion": 18.45, "margen_reposicion": 0.307, "utilidad_costo_compra": 18.45, "margen_compra": 0.307 },
+    "20 oz": { "utilidad_costo_reposicion": 21.27, "margen_reposicion": 0.304, "utilidad_costo_compra": 21.27, "margen_compra": 0.304 }
+   },
+   "porciones_por_tamano": {
+    "cafe_molido": { "14 oz": 18.0, "16 oz": 20.52, "20 oz": 25.74 },
+    "base_moka": { "14 oz": 35.0, "16 oz": 39.9, "20 oz": 50.05 },
+    "leche": { "14 oz": 120.0, "16 oz": 136.8, "20 oz": 171.6 },
+    "hielo": { "14 oz": 95.0, "16 oz": 108.3, "20 oz": 135.85 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Alma Blanca", "categoria": "Café frío",
+   "precio_publico_anterior": { "14 oz": 65, "16 oz": 70, "20 oz": 80 },
+   "precio_publico_nuevo": { "14 oz": 45, "16 oz": 50, "20 oz": 55 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 13.26, "margen_reposicion": 0.295, "utilidad_costo_compra": 13.26, "margen_compra": 0.295 },
+    "16 oz": { "utilidad_costo_reposicion": 15.12, "margen_reposicion": 0.302, "utilidad_costo_compra": 15.12, "margen_compra": 0.302 },
+    "20 oz": { "utilidad_costo_reposicion": 14.97, "margen_reposicion": 0.272, "utilidad_costo_compra": 14.97, "margen_compra": 0.272 }
+   },
+   "porciones_por_tamano": {
+    "cafe_molido": { "14 oz": 25.0, "16 oz": 28.5, "20 oz": 35.75 },
+    "leche": { "14 oz": 270.0, "16 oz": 307.8, "20 oz": 386.1 },
+    "hielo": { "14 oz": 95.0, "16 oz": 108.3, "20 oz": 135.85 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  },
+  {
+   "nombre": "Frutos Rojos", "categoria": "Frutal",
+   "precio_publico_anterior": { "14 oz": 55, "16 oz": 60, "20 oz": 70 },
+   "precio_publico_nuevo": { "14 oz": 40, "16 oz": 45, "20 oz": 50 },
+   "referencia_utilidad_publico_mo_50h": {
+    "14 oz": { "utilidad_costo_reposicion": 12.88, "margen_reposicion": 0.322, "utilidad_costo_compra": 12.88, "margen_compra": 0.322 },
+    "16 oz": { "utilidad_costo_reposicion": 15.41, "margen_reposicion": 0.343, "utilidad_costo_compra": 15.41, "margen_compra": 0.343 },
+    "20 oz": { "utilidad_costo_reposicion": 16.65, "margen_reposicion": 0.333, "utilidad_costo_compra": 16.65, "margen_compra": 0.333 }
+   },
+   "porciones_por_tamano": {
+    "tisana_frutos": { "14 oz": 12.0, "16 oz": 13.68, "20 oz": 17.16 },
+    "perla_maracuya": { "14 oz": 30.0, "16 oz": 34.2, "20 oz": 42.9 },
+    "hielo": { "14 oz": 95.0, "16 oz": 108.3, "20 oz": 135.85 },
+    "popote": { "14 oz": 1, "16 oz": 1, "20 oz": 1 },
+    "etiqueta": { "14 oz": 1, "16 oz": 1, "20 oz": 1 }
+   }
+  }
+ ],
+ "botanas_publico": { "Plátano Deshidratado": 45, "Malanga Natural": 45, "nota": "sin cambio" },
+ "adicionales": "sin cambio",
+ "pendientes_no_tocar": [
+  "Gramos de matcha y azúcar (Pablo iba a ajustarlos el 26/09)",
+  "Jarabe de sodas: el catálogo costea 25 ml (2½ bombeos) en 14 oz; el 09/09 se había dicho 2 bombeos",
+  "Tisana: 12 g en la receta contra 10 g del catálogo",
+  "Proporción agua:café de la tanda de cold brew"
+ ]
+}

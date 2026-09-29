@@ -1,12 +1,25 @@
 import { useState } from 'react'
-import { precioSugerido } from '../../lib/calculos'
+import { desgloseLinea, margenEnRango, margenSobrePrecio, precioSugerido, precioSugeridoPublico } from '../../lib/calculos'
 import { formatoMoneda } from '../../lib/format'
-import { precioAppVigente, setPrecio } from '../../lib/store/remoteStore'
+import { precioAppVigente, precioPublicoVigente, setPrecio } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
+
+const CANAL_PUBLICO = 'Público en general'
+/** Tarifa de mano de obra con la que se costean los precios sugeridos y el margen de Público. */
+const TARIFA_COSTEO = 50
 
 export function RecetasScreen() {
   const bebidas = useStore((s) => Object.values(s.bebidas))
-  const tamanos = useStore((s) => Object.values(s.tamanos).filter((t) => t.activo))
+  // De chico a grande: la escalera del precio sugerido depende del orden.
+  const tamanos = useStore((s) =>
+    Object.values(s.tamanos)
+      .filter((t) => t.activo)
+      .sort((a, b) => a.ml - b.ml),
+  )
+  const tamanosPublico = tamanos.filter((t) => !t.canales || t.canales.includes(CANAL_PUBLICO))
+  const adicionales = useStore((s) => s.adicionales)
+  const turnos = useStore((s) => s.turnos)
+  const configPublico = useStore((s) => s.configPublicoPorCanal[CANAL_PUBLICO])
   const categorias = useStore((s) => s.categorias)
   const insumos = useStore((s) => s.insumos)
   const leches = useStore((s) => s.leches)
@@ -18,17 +31,58 @@ export function RecetasScreen() {
   const [error, setError] = useState<string | null>(null)
   const bebida = bebidas.find((b) => b.nombre === abierta)
   const [edicion, setEdicion] = useState<Record<string, number>>({})
+  const [edicionPublico, setEdicionPublico] = useState<Record<string, number>>({})
+  const lecheDefault = bebida?.llevaLeche ? leches['Entera'] ?? Object.values(leches)[0] : undefined
+
+  const sugeridosPublico = bebida
+    ? precioSugeridoPublico({
+        bebida,
+        tamanos: tamanosPublico,
+        lecheDefault,
+        categoria: categorias[bebida.categoriaNombre],
+        insumos,
+        parametros,
+        tarifaManoDeObra: TARIFA_COSTEO,
+      })
+    : {}
+
+  /** Utilidad en Público a un precio dado, costeada a $50/h como en la regla de v3.1. */
+  function utilidadPublico(tamanoNombre: string, precio: number): number | null {
+    if (!bebida) return null
+    try {
+      return desgloseLinea({
+        fechaHora: new Date(),
+        canalTipo: 'publico',
+        canalNombre: CANAL_PUBLICO,
+        bebida,
+        tamano: tamanos.find((t) => t.nombre === tamanoNombre)!,
+        lecheElegida: lecheDefault,
+        adicionalesElegidos: [],
+        precioApp: 0,
+        precioPublico: precio,
+        insumos,
+        adicionalesCatalogo: adicionales,
+        categorias,
+        parametros,
+        turnos,
+        configPublico,
+        fueraDeTurno: true,
+      }).utilidad
+    } catch {
+      return null
+    }
+  }
 
   const sugeridos = bebida
     ? precioSugerido({
         bebida,
         tamanos,
-        lecheDefault: bebida.llevaLeche ? leches['Entera'] ?? Object.values(leches)[0] : undefined,
+        lecheDefault,
         categoria: categorias[bebida.categoriaNombre],
         insumos,
         parametros,
         comisionEfectivaUber: configUber?.comisionEfectiva ?? 0.295,
-        tarifaManoDeObraPromedio: 50,
+        tarifaManoDeObraPromedio: TARIFA_COSTEO,
       })
     : {}
 
@@ -89,6 +143,51 @@ export function RecetasScreen() {
                       </button>
                     )}
                   </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="border border-border rounded p-4 bg-surface">
+            <h3 className="text-sm label-uppercase mb-1">Precio a público</h3>
+            <p className="text-xs text-muted mb-3">
+              Margen = utilidad ÷ precio, costeado a ${TARIFA_COSTEO}/h. Rango: {Math.round(parametros.margenPublicoMin * 100)}–
+              {Math.round(parametros.margenPublicoMax * 100)} %. El sugerido es sólo para comparar; no cambia el precio vigente.
+            </p>
+            <div className="grid grid-cols-5 gap-2 text-xs label-uppercase pb-2 border-b border-border">
+              <span>Tamaño</span>
+              <span className="text-right">Vigente</span>
+              <span className="text-right">Margen</span>
+              <span className="text-right">Sugerido</span>
+              <span></span>
+            </div>
+            {tamanosPublico.map((t) => {
+              const vigente = precioPublicoVigente(bebida.nombre, t.nombre)
+              const valor = edicionPublico[t.nombre] ?? vigente
+              const utilidad = utilidadPublico(t.nombre, valor)
+              const margen = utilidad != null ? margenSobrePrecio(utilidad, valor) : null
+              const enRango = margen != null && margenEnRango(margen, parametros)
+              const sugerido = sugeridosPublico[t.nombre]
+              return (
+                <div key={t.nombre} className="grid grid-cols-5 gap-2 items-center py-2 border-b border-border text-sm">
+                  <span>{t.nombre}</span>
+                  <input
+                    type="number"
+                    className="h-9 border border-border rounded px-2 bg-bg text-right tabular"
+                    value={valor}
+                    onChange={(e) => setEdicionPublico((prev) => ({ ...prev, [t.nombre]: Number(e.target.value) }))}
+                  />
+                  <span className={`text-right tabular font-semibold ${enRango ? 'text-ok' : 'text-warn'}`}>
+                    {margen != null ? `${(margen * 100).toFixed(1)} %` : '—'}
+                    {margen != null && !enRango && <span className="block text-[11px] font-normal">fuera del rango de público</span>}
+                  </span>
+                  <span className="text-right text-muted tabular">{sugerido ? formatoMoneda(sugerido.precio) : '—'}</span>
+                  <button
+                    className="text-xs font-semibold underline justify-self-end"
+                    onClick={() => setPrecio(bebida.nombre, t.nombre, 'publico', valor, true).catch((e) => setError(e instanceof Error ? e.message : String(e)))}
+                  >
+                    Guardar
+                  </button>
                 </div>
               )
             })}

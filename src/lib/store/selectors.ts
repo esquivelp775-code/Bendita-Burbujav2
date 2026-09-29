@@ -1,4 +1,4 @@
-import { desgloseDelDia, type ActivoDia, type EventoDia, type LineaDia, type PedidoDia } from '../calculos'
+import { desgloseDelDia, generaAvisoCompra, tamanosAgotadosSinRecompra, type ActivoDia, type EventoDia, type LineaDia, type PedidoDia } from '../calculos'
 import { existenciaInsumo, type EstadoStore, type VentaLineaStore } from './remoteStore'
 
 function enRango(fechaIso: string, desde: Date, hasta: Date): boolean {
@@ -96,10 +96,24 @@ export function resumenDia(s: EstadoStore, fecha: Date) {
   return { lineas, desglose, porCanal, porBebida, numeroLineas: lineas.reduce((a, l) => a + l.cantidad, 0) }
 }
 
+/** Tamaños que se dejaron de ofrecer en algún canal porque se acabó su vaso sin recompra (vaso de 14 oz). */
+export function tamanosSinVasos(s: EstadoStore): string[] {
+  const tamanos = Object.values(s.tamanos).filter((t) => t.activo)
+  const agotados = new Set<string>()
+  for (const canal of s.canales) {
+    for (const t of tamanosAgotadosSinRecompra(tamanos, canal.nombre, s.insumos, existenciaInsumo)) agotados.add(t.nombre)
+  }
+  return [...agotados]
+}
+
 export function alertasActivas(s: EstadoStore) {
   const alertas: { insumoClave: string; tipo: string; nombre: string }[] = []
+  for (const tamano of tamanosSinVasos(s)) {
+    alertas.push({ insumoClave: s.tamanos[tamano].vasoInsumoClave, tipo: 'sin vasos', nombre: `Se acabaron los vasos de ${tamano}` })
+  }
   for (const insumo of Object.values(s.insumos)) {
     const existencia = existenciaInsumo(insumo.clave)
+    if (!generaAvisoCompra(insumo)) continue
     if (insumo.stockObjetivo == null) continue
     const umbral = insumo.umbralReorden ?? s.parametros.umbralReordenPorPrioridad[insumo.prioridad ?? 'media']
     if (existencia <= 0) alertas.push({ insumoClave: insumo.clave, tipo: 'agotado', nombre: insumo.nombre })

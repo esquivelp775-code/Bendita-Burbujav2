@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { cantidadSugeridaCompra, umbralReorden } from '../../lib/calculos'
+import { cantidadSugeridaCompra, generaAvisoCompra, umbralReorden } from '../../lib/calculos'
 import { formatoMoneda } from '../../lib/format'
 import { existenciaInsumo, registrarConteoLocal } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
@@ -22,7 +22,8 @@ export function InventarioScreen() {
     })
     .sort((a, b) => PRIORIDAD_ORDEN[a.insumo.prioridad ?? 'media'] - PRIORIDAD_ORDEN[b.insumo.prioridad ?? 'media'])
 
-  const conCompra = filas.filter((f) => f.enAlerta || f.agotado)
+  // Lo que no se recompra (vaso de 14 oz) se vende hasta acabarse: no va a la lista de compras.
+  const conCompra = filas.filter((f) => generaAvisoCompra(f.insumo) && (f.enAlerta || f.agotado))
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-6 max-w-4xl mx-auto">
@@ -55,7 +56,10 @@ export function InventarioScreen() {
         </div>
         {filas.map((f) => (
           <div key={f.insumo.clave} className="grid grid-cols-5 gap-2 items-center py-2 border-b border-border text-sm">
-            <span className="normal-case font-normal">{f.insumo.nombre}</span>
+            <span className="normal-case font-normal">
+              {f.insumo.nombre}
+              {!generaAvisoCompra(f.insumo) && <span className="ml-2 text-xs text-muted">· sin recompra</span>}
+            </span>
             <span className="label-uppercase text-xs">{f.insumo.prioridad}</span>
             <span className={`text-right tabular ${f.agotado ? 'text-ink-dark font-semibold' : f.enAlerta ? 'text-warn font-semibold' : ''}`}>
               {f.existencia.toFixed(1)}

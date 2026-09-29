@@ -16,6 +16,8 @@ export interface Insumo {
   umbralReorden?: number | null
   stockObjetivo?: number | null
   caducaAbiertoDias?: number | null
+  /** false = se usa hasta acabarse y no se recompra (p. ej. el vaso de 14 oz): no genera avisos de compra. */
+  recompra?: boolean
 }
 
 export interface Tamano {
@@ -121,6 +123,9 @@ export interface Parametros {
   horaManoDeObraFueraDeTurno: number
   metaUtilidadSemanal: number
   umbralReordenPorPrioridad: Record<Prioridad, number>
+  /** Rango objetivo del margen (utilidad / precio) en el canal Público. v3.1: 0.27 a 0.34. */
+  margenPublicoMin: number
+  margenPublicoMax: number
 }
 
 // ─── Redondeo ────────────────────────────────────────────────────────────
@@ -691,6 +696,124 @@ export function precioSugerido(input: PrecioSugeridoInput): Record<string, numbe
   return resultado
 }
 
+// ─── v3.1 — Precio y margen en el canal Público ─────────────────────────────
+
+/** Margen sobre el precio de venta: utilidad / precio. */
+export function margenSobrePrecio(utilidad: number, precio: number): number {
+  return precio > 0 ? utilidad / precio : 0
+}
+
+export function margenEnRango(margen: number, parametros: Parametros): boolean {
+  return margen >= parametros.margenPublicoMin && margen <= parametros.margenPublicoMax
+}
+
+export interface PrecioSugeridoPublicoInput {
+  bebida: Bebida
+  /** Tamaños a sugerir, ordenados de menor a mayor. */
+  tamanos: Tamano[]
+  lecheDefault?: Leche
+  categoria: Categoria
+  insumos: Record<string, Insumo>
+  parametros: Parametros
+  /** Tarifa de mano de obra para el costeo (v3.1: $50/h). */
+  tarifaManoDeObra: number
+}
+
+export interface PrecioSugeridoPublico {
+  precio: number
+  utilidad: number
+  margen: number
+  enRango: boolean
+}
+
+/**
+ * Precio sugerido a Público (v3.1): el múltiplo de $5 más bajo que deje un margen de al menos
+ * `margenPublicoMin`, y cada tamaño al menos $5 arriba del anterior. Si el escalón de $5 empuja el
+ * margen por encima de `margenPublicoMax`, se acepta (`enRango` = false): así se decidió en v3.1.
+ * utilidad = precio / (1 + IVA) − costo de producción (incluye indirectos) − mano de obra.
+ */
+export function precioSugeridoPublico(input: PrecioSugeridoPublicoInput): Record<string, PrecioSugeridoPublico> {
+  const { bebida, tamanos, lecheDefault, categoria, insumos, parametros, tarifaManoDeObra } = input
+  const factorSinIva = 1 / (1 + parametros.ivaVenta)
+  const paso = parametros.redondeoPrecio
+
+  const resultado: Record<string, PrecioSugeridoPublico> = {}
+  let anterior: number | null = null
+  for (const tamano of tamanos) {
+    const consumo = resolverLineasConsumo(bebida, tamano, bebida.llevaLeche ? lecheDefault : undefined, [])
+    const { insumosTotal, empaqueTotal } = costosPorConsumo(consumo, insumos)
+    const costoTotal =
+      insumosTotal +
+      empaqueTotal +
+      vasoTapaCosto(tamano, insumos) +
+      parametros.indirectosPorBebida * factorSinIva +
+      (categoria.minutosPreparacion * tarifaManoDeObra) / 60
+
+    // margen(P) = (P·factorSinIva − costo) / P ≥ min  ⇔  P ≥ costo / (factorSinIva − min)
+    let precio = Math.ceil(costoTotal / (factorSinIva - parametros.margenPublicoMin) / paso - 1e-9) * paso
+    if (anterior != null && precio < anterior + paso) precio = anterior + paso
+    const utilidad = precio * factorSinIva - costoTotal
+    const margen = margenSobrePrecio(utilidad, precio)
+    resultado[tamano.nombre] = { precio, utilidad: redondeoCentavos(utilidad), margen, enRango: margenEnRango(margen, parametros) }
+    anterior = precio
+  }
+  return resultado
+}
+
+// ─── v3.1 — Tamaños que se pueden vender ────────────────────────────────────
+
+/**
+ * Tamaños que se ofrecen en un canal: los que aplican a ese canal y, si su vaso no se recompra
+ * (vaso de 14 oz), sólo mientras quede existencia. Al registrar una compra de ese vaso vuelve solo.
+ */
+export function tamanosVendibles<T extends Tamano>(
+  tamanos: T[],
+  canalNombre: string,
+  insumos: Record<string, Insumo>,
+  existencia: (insumoClave: string) => number,
+): T[] {
+  return tamanos.filter((t) => {
+    if (t.canales && !t.canales.includes(canalNombre)) return false
+    const vaso = insumos[t.vasoInsumoClave]
+    if (vaso && !generaAvisoCompra(vaso) && existencia(t.vasoInsumoClave) <= 0) return false
+    return true
+  })
+}
+
+/** Tamaños de un canal que dejaron de ofrecerse porque se acabó su vaso sin recompra. */
+export function tamanosAgotadosSinRecompra<T extends Tamano>(
+  tamanos: T[],
+  canalNombre: string,
+  insumos: Record<string, Insumo>,
+  existencia: (insumoClave: string) => number,
+): T[] {
+  const vendibles = new Set(tamanosVendibles(tamanos, canalNombre, insumos, existencia))
+  return tamanos.filter((t) => (!t.canales || t.canales.includes(canalNombre)) && !vendibles.has(t))
+}
+
+// ─── v3.1 — Precio vigente en una fecha ─────────────────────────────────────
+
+export interface RegistroPrecio {
+  precio: number
+  manual: boolean
+  /** ISO 8601. */
+  vigenteDesde: string
+}
+
+/**
+ * El registro más reciente con vigencia hasta `fecha`. Los precios nunca se sobrescriben: un
+ * precio con vigencia futura no aplica todavía, y una fecha pasada ve el precio de ese momento.
+ */
+export function precioVigenteEn(historial: RegistroPrecio[], fecha: Date): RegistroPrecio | undefined {
+  let elegido: RegistroPrecio | undefined
+  for (const r of historial) {
+    const t = new Date(r.vigenteDesde).getTime()
+    if (t > fecha.getTime()) continue
+    if (!elegido || t > new Date(elegido.vigenteDesde).getTime()) elegido = r
+  }
+  return elegido
+}
+
 // ─── 5.10 — Reorden por prioridad y notificaciones ─────────────────────────
 
 export type TipoAlertaInventario = 'reorden' | 'agotado' | 'caducidad' | 'cobertura'
@@ -713,18 +836,26 @@ export function umbralReorden(insumo: Insumo, parametros: Parametros): number {
   return insumo.umbralReorden ?? parametros.umbralReordenPorPrioridad[insumo.prioridad ?? 'media']
 }
 
+/** Un insumo marcado "sin recompra" se vende hasta acabarse: no entra a la lista de compras. */
+export function generaAvisoCompra(insumo: Insumo): boolean {
+  return insumo.recompra !== false
+}
+
 export function evaluarAlertasReorden(estado: EstadoInsumo, parametros: Parametros, hoy: Date): Alerta[] {
   const alertas: Alerta[] = []
   const { insumo, existencia, stockObjetivo, consumoDiario14d, aperturaAbiertaEn } = estado
 
-  if (stockObjetivo != null && existencia <= umbralReorden(insumo, parametros) * stockObjetivo) {
-    alertas.push({ insumoClave: insumo.clave, tipo: 'reorden' })
-  }
-  if (existencia <= 0) {
-    alertas.push({ insumoClave: insumo.clave, tipo: 'agotado' })
-  }
-  if (consumoDiario14d > 0 && existencia / consumoDiario14d < 3) {
-    alertas.push({ insumoClave: insumo.clave, tipo: 'cobertura' })
+  // Reorden, agotado y cobertura son avisos de compra: no aplican a lo que no se recompra.
+  if (generaAvisoCompra(insumo)) {
+    if (stockObjetivo != null && existencia <= umbralReorden(insumo, parametros) * stockObjetivo) {
+      alertas.push({ insumoClave: insumo.clave, tipo: 'reorden' })
+    }
+    if (existencia <= 0) {
+      alertas.push({ insumoClave: insumo.clave, tipo: 'agotado' })
+    }
+    if (consumoDiario14d > 0 && existencia / consumoDiario14d < 3) {
+      alertas.push({ insumoClave: insumo.clave, tipo: 'cobertura' })
+    }
   }
   if (aperturaAbiertaEn && insumo.caducaAbiertoDias != null) {
     const diasTranscurridos = Math.floor((hoy.getTime() - aperturaAbiertaEn.getTime()) / 86_400_000)

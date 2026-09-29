@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatoMoneda } from '../../lib/format'
 import { datos } from '../../lib/fixtures'
-import { calcularDesgloseItem, registrarPedidoConItems, type ItemCarrito } from '../../lib/store/remoteStore'
+import { tamanosAgotadosSinRecompra } from '../../lib/calculos'
+import { calcularDesgloseItem, existenciaInsumo, registrarPedidoConItems, type ItemCarrito } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
 import { BebidaPanel } from './BebidaPanel'
 
@@ -26,6 +27,9 @@ export function VenderScreen() {
   const timeoutInactividad = useRef<ReturnType<typeof setTimeout> | null>(null)
   const timeoutDeshacer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const sinVasos = useStore((s) =>
+    canal ? tamanosAgotadosSinRecompra(Object.values(s.tamanos).filter((t) => t.activo), canal.nombre, s.insumos, existenciaInsumo) : [],
+  )
   const configPublico = useStore((s) => (canal ? s.configPublicoPorCanal[canal.nombre] : undefined))
 
   useEffect(() => {
@@ -129,6 +133,12 @@ export function VenderScreen() {
             </button>
           ))}
         </div>
+
+        {sinVasos.map((t) => (
+          <div key={t.nombre} className="text-sm bg-surface border border-warn text-warn rounded p-3">
+            Se acabaron los vasos de {t.nombre}. Ya no se ofrece en {canal.nombre}; vuelve solo si registras una compra de vasos de {t.nombre}.
+          </div>
+        ))}
 
         {canal.tipo === 'evento' && (
           <div className="flex items-center gap-2 text-sm bg-surface border border-border rounded p-3">
