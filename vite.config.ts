@@ -9,7 +9,7 @@ export default defineConfig({
       // 'prompt': la versión nueva espera a que no haya pedido abierto (src/lib/actualizacion.ts).
       registerType: 'prompt',
       injectRegister: false,
-      includeAssets: ['assets/logo-bendita.jpeg'],
+      includeAssets: ['assets/logo-bendita.jpeg', 'icons/apple-touch-icon.png'],
       manifest: {
         name: 'Bendita Burbuja',
         short_name: 'Bendita Burbuja',
@@ -19,7 +19,9 @@ export default defineConfig({
         display: 'standalone',
         start_url: '/',
         icons: [
-          { src: 'assets/logo-bendita.jpeg', sizes: '512x512', type: 'image/jpeg' },
+          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

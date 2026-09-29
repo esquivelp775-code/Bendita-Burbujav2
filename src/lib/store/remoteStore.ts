@@ -90,6 +90,8 @@ export interface ActivoStore {
   fechaAlta: string
   vidaUtilMeses: number
   notas?: string
+  ivaAcreditable?: number
+  fechaBaja?: string | null
 }
 
 export interface PrecioManual {
@@ -620,9 +622,12 @@ async function cargarActivos(): Promise<ActivoStore[]> {
     tipo: a.tipo,
     costoNeto: a.costo_neto,
     valorRescate: a.valor_rescate,
-    fechaAlta: a.fecha_alta,
+    // Columnas `date`: "AAAA-MM-DD" (se recorta por si llega con hora).
+    fechaAlta: String(a.fecha_alta).slice(0, 10),
     vidaUtilMeses: a.vida_util_meses,
     notas: a.notas ?? undefined,
+    ivaAcreditable: a.iva_acreditable ?? 0,
+    fechaBaja: a.fecha_baja ? String(a.fecha_baja).slice(0, 10) : null,
   }))
 }
 
@@ -1222,9 +1227,31 @@ export async function altaActivo(activo: Omit<ActivoStore, 'id'>) {
       fecha_alta: activo.fechaAlta,
       vida_util_meses: activo.vidaUtilMeses,
       notas: activo.notas ?? null,
+      iva_acreditable: activo.ivaAcreditable ?? 0,
     })
     .select()
     .single()
   if (error) throw error
   set((s) => ({ ...s, activos: [...s.activos, { ...activo, id: data.id }] }))
+}
+
+/** Editar o dar de baja (fechaBaja) un activo. La baja no borra: deja de depreciarse desde ese día. */
+export async function actualizarActivo(id: string, cambios: Partial<Omit<ActivoStore, 'id'>>) {
+  const columnas: Record<string, string> = {
+    nombre: 'nombre',
+    tipo: 'tipo',
+    costoNeto: 'costo_neto',
+    valorRescate: 'valor_rescate',
+    fechaAlta: 'fecha_alta',
+    vidaUtilMeses: 'vida_util_meses',
+    notas: 'notas',
+    ivaAcreditable: 'iva_acreditable',
+    fechaBaja: 'fecha_baja',
+  }
+  const patch: Record<string, unknown> = {}
+  for (const [campo, valor] of Object.entries(cambios)) if (columnas[campo]) patch[columnas[campo]] = valor ?? null
+  const { error } = await supabase.from('activos').update(patch).eq('id', id)
+  if (error) throw error
+  set((s) => ({ ...s, activos: s.activos.map((a) => (a.id === id ? { ...a, ...cambios } : a)) }))
+  void guardarSnapshot()
 }

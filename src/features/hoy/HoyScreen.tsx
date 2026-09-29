@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { avanceSemana } from '../../lib/calculos'
 import { formatoFecha, formatoMoneda } from '../../lib/format'
-import { alertasInventario, finDia, inicioSemana, lineasValidasEnRango, resumenDia } from '../../lib/store/selectors'
+import { alertasInventario, resumenDia, resumenSemana } from '../../lib/store/selectors'
 import { useStore } from '../../lib/store/useStore'
 
 export function HoyScreen() {
@@ -10,13 +10,13 @@ export function HoyScreen() {
   const parametros = useStore((s) => s.parametros)
   const alertas = useStore(alertasInventario)
 
-  const gananciaSemana = useStore((s) => {
-    const desde = inicioSemana(hoy)
-    const lineas = lineasValidasEnRango(s, desde, finDia(hoy))
-    return lineas.reduce((acc, l) => acc + l.desglose.utilidad * l.cantidad, 0)
-  })
-
-  const avance = avanceSemana(gananciaSemana, parametros.metaUtilidadSemanal)
+  const semana = useStore((s) => resumenSemana(s, hoy))
+  const gananciaSemana = semana.ganancia
+  const avance = avanceSemana(Math.max(0, gananciaSemana), parametros.metaUtilidadSemanal)
+  const faltaMeta = parametros.metaUtilidadSemanal - gananciaSemana
+  const porBebida = semana.utilidadPorBebida
+  const bebidasParaMeta = porBebida && porBebida > 0 && faltaMeta > 0 ? Math.ceil(faltaMeta / porBebida) : null
+  const bebidasEquilibrio = porBebida && porBebida > 0 ? Math.ceil(semana.equipoSemana / porBebida) : null
 
   const topBebidas = [...resumen.porBebida.entries()].sort((a, b) => b[1].ganancia - a[1].ganancia).slice(0, 5)
 
@@ -31,8 +31,13 @@ export function HoyScreen() {
           <span className="label-uppercase">Hoy te quedan</span>
           <span className="text-5xl font-display tabular">{formatoMoneda(resumen.desglose.teLlevas)}</span>
           <span className="text-sm text-muted tabular">
-            {resumen.numeroLineas} bebidas vendidas · {formatoMoneda(resumen.desglose.venta)} de venta
+            {resumen.numeroBebidas} {resumen.numeroBebidas === 1 ? 'bebida vendida' : 'bebidas vendidas'} · {formatoMoneda(resumen.desglose.venta)} de venta
           </span>
+          {resumen.desglose.equipo > 0 && (
+            <span className="text-xs text-muted">
+              Ya descuenta {formatoMoneda(resumen.desglose.equipo)} de equipo del día (depreciación de tu mobiliario y equipo).
+            </span>
+          )}
         </div>
 
         <div className="flex flex-col gap-3">
@@ -47,8 +52,19 @@ export function HoyScreen() {
             <div className="h-2.5 bg-card border border-border rounded overflow-hidden">
               <div className="h-full bg-ok" style={{ width: `${Math.min(100, avance * 100)}%` }} />
             </div>
-            <p className="text-sm text-muted mt-2">
-              Esta semana te llevas <strong className="text-ok tabular">{formatoMoneda(gananciaSemana)}</strong>
+            <p className="text-sm text-muted mt-2 mb-0">
+              Ganancia de la semana:{' '}
+              <strong className={`tabular ${gananciaSemana < 0 ? 'text-ink-dark' : 'text-ok'}`}>{formatoMoneda(gananciaSemana)}</strong>
+              {' · '}te llevas <span className="tabular">{formatoMoneda(semana.teLlevas)}</span> con tu mano de obra
+            </p>
+            <p className="text-xs text-muted mt-1 mb-0">
+              {gananciaSemana < 0
+                ? `Punto de equilibrio: cubrir ${formatoMoneda(semana.equipoSemana)} de equipo de la semana${bebidasEquilibrio ? ` (≈ ${bebidasEquilibrio} bebidas)` : ''}.`
+                : faltaMeta <= 0
+                  ? '¡Meta de la semana cumplida!'
+                  : bebidasParaMeta && porBebida
+                    ? `Te faltan ≈ ${bebidasParaMeta} bebidas para la meta (a ${formatoMoneda(porBebida)} por bebida).`
+                    : `Punto de equilibrio: cubrir ${formatoMoneda(semana.equipoSemana)} de equipo de la semana.`}
             </p>
           </div>
         </div>

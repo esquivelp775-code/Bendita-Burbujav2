@@ -926,6 +926,27 @@ export interface ActivoDia {
   vidaUtilMeses: number
 }
 
+export interface FechasActivo {
+  /** "AAAA-MM-DD" */
+  fechaAlta: string
+  vidaUtilMeses: number
+  fechaBaja?: string | null
+}
+
+/**
+ * Spec §5.12: un activo cuenta el día d si ya se dio de alta, no se ha dado de baja y sigue dentro
+ * de su vida útil. Las fechas son de calendario (sin hora); la baja cuenta desde ese mismo día.
+ */
+export function activoEnUso(activo: FechasActivo, dia: Date): boolean {
+  const d = `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, '0')}-${String(dia.getDate()).padStart(2, '0')}`
+  if (activo.fechaAlta > d) return false
+  if (activo.fechaBaja && activo.fechaBaja <= d) return false
+  const [a, m, dd] = activo.fechaAlta.split('-').map(Number)
+  const fin = new Date(a, m - 1 + activo.vidaUtilMeses, dd)
+  const finTexto = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}`
+  return d < finTexto
+}
+
 /** Depreciación mensual prorrateada al día. Fórmula 5.12. */
 export function equipoDelDia(activos: ActivoDia[]): number {
   return activos.reduce((acc, a) => acc + (a.costoNeto - a.valorRescate) / a.vidaUtilMeses / 30.4, 0)

@@ -1,4 +1,5 @@
 import {
+  activoEnUso,
   desgloseDelDia,
   evaluarAlertasReorden,
   generaAvisoCompra,
@@ -73,7 +74,7 @@ export function resumenDia(s: EstadoStore, fecha: Date) {
 
   const eventos: EventoDia[] = [] // Fase 2: eventos con costos reales capturados
   const activos: ActivoDia[] = s.activos
-    .filter((a) => !a.fechaAlta || new Date(a.fechaAlta) <= hasta)
+    .filter((a) => activoEnUso(a, fecha))
     .map((a) => ({ costoNeto: a.costoNeto, valorRescate: a.valorRescate, vidaUtilMeses: a.vidaUtilMeses }))
 
   const desglose = desgloseDelDia(lineasDia, pedidosDia, eventos, activos, s.parametros, s.parametros.horaManoDeObraFueraDeTurno)
@@ -102,7 +103,49 @@ export function resumenDia(s: EstadoStore, fecha: Date) {
     porBebida.set(clave, bucket)
   }
 
-  return { lineas, desglose, porCanal, porBebida, numeroLineas: lineas.reduce((a, l) => a + l.cantidad, 0) }
+  return {
+    lineas,
+    desglose,
+    porCanal,
+    porBebida,
+    numeroLineas: lineas.reduce((a, l) => a + l.cantidad, 0),
+    numeroBebidas: lineas.filter((l) => l.tipo === 'bebida').reduce((a, l) => a + l.cantidad, 0),
+  }
+}
+
+export interface ResumenSemana {
+  /** Suma de la ganancia de cada día (ya descuenta equipo, eventos y envíos): coincide con el Desglose. */
+  ganancia: number
+  teLlevas: number
+  bebidas: number
+  /** Depreciación del equipo de lunes a domingo: lo que hay que cubrir para no perder (punto de equilibrio). */
+  equipoSemana: number
+  /** Utilidad promedio por bebida vendida esta semana (o null si todavía no hay ventas). */
+  utilidadPorBebida: number | null
+}
+
+/** Semana lunes-domingo (spec §5.13) sumando el desglose de cada día hasta hoy. */
+export function resumenSemana(s: EstadoStore, hoy: Date): ResumenSemana {
+  let ganancia = 0
+  let teLlevas = 0
+  let bebidas = 0
+  let utilidadBebidas = 0
+  let equipoDia = 0
+  for (let d = inicioSemana(hoy); d.getTime() <= finDia(hoy).getTime(); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+    const r = resumenDia(s, d)
+    ganancia += r.desglose.ganancia
+    teLlevas += r.desglose.teLlevas
+    bebidas += r.numeroBebidas
+    utilidadBebidas += r.lineas.filter((l) => l.tipo === 'bebida').reduce((a, l) => a + l.desglose.utilidad * l.cantidad, 0)
+    equipoDia = r.desglose.equipo
+  }
+  return {
+    ganancia,
+    teLlevas,
+    bebidas,
+    equipoSemana: equipoDia * 7,
+    utilidadPorBebida: bebidas > 0 ? utilidadBebidas / bebidas : null,
+  }
 }
 
 /** Tamaños que se dejaron de ofrecer en algún canal porque se acabó su vaso sin recompra (vaso de 14 oz). */

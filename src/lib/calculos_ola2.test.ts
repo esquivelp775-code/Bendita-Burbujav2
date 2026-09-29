@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { charolasDelPedido, desgloseBotana, porcionesPosibles, redondeoCentavos, type Insumo, type Parametros } from './calculos'
+import { activoEnUso, charolasDelPedido, desgloseBotana, porcionesPosibles, redondeoCentavos, type Insumo, type Parametros } from './calculos'
+
+describe('activoEnUso (spec §5.12)', () => {
+  const selladora = { fechaAlta: '2026-09-26', vidaUtilMeses: 12 }
+  const dia = (s: string) => {
+    const [a, m, d] = s.split('-').map(Number)
+    return new Date(a, m - 1, d, 15, 0)
+  }
+  it('no cuenta antes del alta', () => expect(activoEnUso(selladora, dia('2026-09-25'))).toBe(false))
+  it('cuenta desde el día de alta', () => expect(activoEnUso(selladora, dia('2026-09-26'))).toBe(true))
+  it('deja de contar al cumplir su vida útil', () => {
+    expect(activoEnUso(selladora, dia('2027-09-25'))).toBe(true)
+    expect(activoEnUso(selladora, dia('2027-09-26'))).toBe(false)
+  })
+  it('la baja cuenta desde ese día', () => {
+    const conBaja = { ...selladora, fechaBaja: '2026-12-01' }
+    expect(activoEnUso(conBaja, dia('2026-11-30'))).toBe(true)
+    expect(activoEnUso(conBaja, dia('2026-12-01'))).toBe(false)
+  })
+})
 
 const parametros: Parametros = {
   ivaVenta: 0.16,

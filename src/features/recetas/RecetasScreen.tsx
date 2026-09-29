@@ -5,6 +5,7 @@ import { precioAppVigente, precioPublicoVigente, setPrecio } from '../../lib/sto
 import { useStore } from '../../lib/store/useStore'
 
 const CANAL_PUBLICO = 'Público en general'
+const CANALES_APP = ['Uber Eats', 'Rappi']
 /** Tarifa de mano de obra con la que se costean los precios sugeridos y el margen de Público. */
 const TARIFA_COSTEO = 50
 
@@ -17,6 +18,8 @@ export function RecetasScreen() {
       .sort((a, b) => a.ml - b.ml),
   )
   const tamanosPublico = tamanos.filter((t) => !t.canales || t.canales.includes(CANAL_PUBLICO))
+  // El precio de lista 'app' aplica a Uber y Rappi: sólo tamaños que se venden ahí (el 14 oz no).
+  const tamanosApp = tamanos.filter((t) => !t.canales || t.canales.some((c) => CANALES_APP.includes(c)))
   const adicionales = useStore((s) => s.adicionales)
   const turnos = useStore((s) => s.turnos)
   const configPublico = useStore((s) => s.configPublicoPorCanal[CANAL_PUBLICO])
@@ -76,7 +79,7 @@ export function RecetasScreen() {
   const sugeridos = bebida
     ? precioSugerido({
         bebida,
-        tamanos,
+        tamanos: tamanosApp,
         lecheDefault,
         categoria: categorias[bebida.categoriaNombre],
         insumos,
@@ -90,11 +93,21 @@ export function RecetasScreen() {
     <div className="p-4 md:p-6 flex flex-col md:flex-row gap-4 max-w-5xl mx-auto">
       <div className="w-full md:w-64 flex-none flex flex-col gap-1">
         <h1 className="text-2xl mb-2">Recetas</h1>
+        <label className="md:hidden flex flex-col gap-1 text-sm">
+          Bebida
+          <select className="h-11 border border-border rounded px-2 bg-surface" value={abierta ?? ''} onChange={(e) => setAbierta(e.target.value)}>
+            {bebidas.map((b) => (
+              <option key={b.nombre} value={b.nombre}>
+                {b.nombre}
+              </option>
+            ))}
+          </select>
+        </label>
         {bebidas.map((b) => (
           <button
             key={b.nombre}
             onClick={() => setAbierta(b.nombre)}
-            className={`text-left h-10 px-3 rounded ${b.nombre === abierta ? 'bg-ink text-bg font-semibold' : 'hover:bg-card'}`}
+            className={`hidden md:block text-left h-10 px-3 rounded ${b.nombre === abierta ? 'bg-ink text-bg font-semibold' : 'hover:bg-card'}`}
           >
             {b.nombre}
           </button>
@@ -107,27 +120,28 @@ export function RecetasScreen() {
           <div className="border border-border rounded p-4 bg-surface">
             <h3 className="text-sm label-uppercase mb-3">Precio por tamaño (canal app)</h3>
             {error && <p className="text-sm text-ink-dark mb-2">{error}</p>}
-            <div className="grid grid-cols-4 gap-2 text-xs label-uppercase pb-2 border-b border-border">
+            <div className="grid grid-cols-[3.5rem_5.5rem_1fr] md:grid-cols-4 gap-2 text-xs label-uppercase pb-2 border-b border-border">
               <span>Tamaño</span>
               <span className="text-right">Vigente</span>
               <span className="text-right">Sugerido</span>
-              <span></span>
+              <span className="hidden md:block"></span>
             </div>
-            {tamanos.map((t) => {
+            {tamanosApp.map((t) => {
               const vigente = precioAppVigente(bebida.nombre, t.nombre)
               const sugerido = sugeridos[t.nombre]
               const valorEdicion = edicion[t.nombre] ?? vigente
               return (
-                <div key={t.nombre} className="grid grid-cols-4 gap-2 items-center py-2 border-b border-border text-sm">
+                <div key={t.nombre} className="grid grid-cols-[3.5rem_5.5rem_1fr] md:grid-cols-4 gap-2 items-center py-2 border-b border-border text-sm">
                   <span>{t.nombre}</span>
                   <input
                     type="number"
-                    className="h-9 border border-border rounded px-2 bg-bg text-right tabular"
+                    inputMode="decimal"
+                    className="h-9 w-full border border-border rounded px-2 bg-bg text-right tabular"
                     value={valorEdicion}
                     onChange={(e) => setEdicion((prev) => ({ ...prev, [t.nombre]: Number(e.target.value) }))}
                   />
                   <span className="text-right text-muted tabular">{sugerido != null ? formatoMoneda(sugerido) : '—'}</span>
-                  <div className="flex gap-2 justify-end">
+                  <div className="col-span-3 md:col-span-1 flex gap-4 justify-end">
                     <button
                       className="text-xs font-semibold underline"
                       onClick={() => setPrecio(bebida.nombre, t.nombre, 'app', valorEdicion, true).catch((e) => setError(e instanceof Error ? e.message : String(e)))}
