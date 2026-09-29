@@ -20,7 +20,7 @@ export function DesgloseScreen() {
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-6 max-w-4xl mx-auto">
-      <h1 className="text-3xl capitalize">Desglose del día · {formatoFecha(hoy)}</h1>
+      <h1 className="text-3xl">Desglose del día · {formatoFecha(hoy)}</h1>
 
       <section className="border border-border rounded p-4 bg-surface">
         <h2 className="text-sm label-uppercase mb-2">Cascada</h2>

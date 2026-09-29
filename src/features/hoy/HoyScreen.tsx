@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom'
 import { avanceSemana } from '../../lib/calculos'
 import { formatoFecha, formatoMoneda } from '../../lib/format'
-import { inicioSemana, lineasValidasEnRango, resumenDia, alertasActivas, finDia } from '../../lib/store/selectors'
+import { alertasInventario, finDia, inicioSemana, lineasValidasEnRango, resumenDia } from '../../lib/store/selectors'
 import { useStore } from '../../lib/store/useStore'
 
 export function HoyScreen() {
   const hoy = new Date()
   const resumen = useStore((s) => resumenDia(s, hoy))
   const parametros = useStore((s) => s.parametros)
-  const alertas = useStore(alertasActivas)
+  const alertas = useStore(alertasInventario)
 
   const gananciaSemana = useStore((s) => {
     const desde = inicioSemana(hoy)
@@ -23,7 +23,7 @@ export function HoyScreen() {
   return (
     <div className="p-4 md:p-6 flex flex-col gap-6 max-w-5xl mx-auto">
       <header>
-        <h1 className="text-3xl capitalize">{formatoFecha(hoy)}</h1>
+        <h1 className="text-3xl">{formatoFecha(hoy)}</h1>
       </header>
 
       <section className="grid gap-4 md:grid-cols-2">
@@ -97,12 +97,20 @@ export function HoyScreen() {
           </Link>
         </div>
         {alertas.length === 0 && <p className="text-sm text-muted">Todo en orden. Ningún insumo debajo de su umbral.</p>}
-        {alertas.map((a) => (
-          <div key={a.insumoClave + a.tipo} className="flex justify-between items-center py-2 border-b border-border text-sm">
-            <span className="text-warn font-medium">{a.nombre}</span>
-            <span className="label-uppercase border border-warn text-warn rounded px-1.5 py-0.5">{a.tipo}</span>
+        {alertas.slice(0, 8).map((a) => (
+          <div key={a.insumoClave + a.tipo} className="flex justify-between items-center gap-2 py-2 border-b border-border text-sm">
+            <span className={a.negativo ? 'text-ink-dark font-medium' : 'text-warn font-medium'}>
+              {a.nombre}
+              {a.negativo && <span className="block text-xs font-normal">En negativo: se vendió sin existencia registrada</span>}
+            </span>
+            <span className="label-uppercase border border-warn text-warn rounded px-1.5 py-0.5 whitespace-nowrap">{a.tipo}</span>
           </div>
         ))}
+        {alertas.length > 8 && (
+          <Link to="/inventario" className="block text-sm text-muted pt-2">
+            y {alertas.length - 8} más en Inventario
+          </Link>
+        )}
       </section>
     </div>
   )

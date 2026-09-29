@@ -8,6 +8,7 @@ export interface Insumo {
   clave: string
   nombre: string
   categoria: string
+  unidad?: 'g' | 'ml' | 'pieza'
   /** Costo por unidad de receta, sin IVA, ya dividido entre (1 − merma). Fórmula 5.1. */
   costoUnitarioNeto: number
   /** Fracción de merma física (0 para piezas como vaso/tapa). */
@@ -100,6 +101,19 @@ export interface ConfigPlataforma {
   ivaSobreComision: number
   retencionIsr: number
   retencionIva: number
+}
+
+export interface ComponentesComision {
+  comisionBase: number
+  uberOne: number
+  /** Fracción de pedidos que llevan Uber One (Uber 0.5). */
+  uberOneProporcion: number
+  marketing: number
+}
+
+/** comision_efectiva = comision_base + uber_one × uber_one_proporcion + marketing (spec §4). Nunca se guarda. */
+export function comisionEfectivaDe(c: ComponentesComision): number {
+  return c.comisionBase + c.uberOne * c.uberOneProporcion + c.marketing
 }
 
 export interface ConfigPublico {

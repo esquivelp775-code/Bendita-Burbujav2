@@ -1,5 +1,14 @@
-import { desgloseDelDia, generaAvisoCompra, tamanosAgotadosSinRecompra, type ActivoDia, type EventoDia, type LineaDia, type PedidoDia } from '../calculos'
-import { existenciaInsumo, type EstadoStore, type VentaLineaStore } from './remoteStore'
+import {
+  desgloseDelDia,
+  evaluarAlertasReorden,
+  generaAvisoCompra,
+  tamanosAgotadosSinRecompra,
+  type ActivoDia,
+  type EventoDia,
+  type LineaDia,
+  type PedidoDia,
+} from '../calculos'
+import type { EstadoStore, VentaLineaStore } from './remoteStore'
 
 function enRango(fechaIso: string, desde: Date, hasta: Date): boolean {
   const t = new Date(fechaIso).getTime()
@@ -100,24 +109,55 @@ export function resumenDia(s: EstadoStore, fecha: Date) {
 export function tamanosSinVasos(s: EstadoStore): string[] {
   const tamanos = Object.values(s.tamanos).filter((t) => t.activo)
   const agotados = new Set<string>()
+  const existencia = (clave: string) => s.existencias[clave]?.existencia ?? 0
   for (const canal of s.canales) {
-    for (const t of tamanosAgotadosSinRecompra(tamanos, canal.nombre, s.insumos, existenciaInsumo)) agotados.add(t.nombre)
+    for (const t of tamanosAgotadosSinRecompra(tamanos, canal.nombre, s.insumos, existencia)) agotados.add(t.nombre)
   }
   return [...agotados]
 }
 
-export function alertasActivas(s: EstadoStore) {
-  const alertas: { insumoClave: string; tipo: string; nombre: string }[] = []
+export type TipoAviso = 'sin vasos' | 'agotado' | 'reorden' | 'cobertura'
+
+export interface AvisoInventario {
+  insumoClave: string
+  tipo: TipoAviso
+  nombre: string
+  existencia: number
+  /** true si la existencia quedó en negativo: se vendió algo que el sistema no tenía registrado. */
+  negativo: boolean
+}
+
+const ORDEN_AVISO: Record<TipoAviso, number> = { 'sin vasos': 0, agotado: 1, reorden: 2, cobertura: 3 }
+const ORDEN_PRIORIDAD = { alta: 0, media: 1, baja: 2 } as const
+
+/**
+ * Única fuente de avisos de inventario: Hoy, Inventario, la navegación y la caja leen de aquí.
+ * Agotado aplica aunque el insumo no tenga objetivo; reorden usa el objetivo efectivo (manual o
+ * automático por compras); cobertura, el consumo de 14 días. Un insumo sin recompra sólo avisa
+ * cuando su tamaño se deja de ofrecer.
+ */
+export function alertasInventario(s: EstadoStore): AvisoInventario[] {
+  const avisos: AvisoInventario[] = []
   for (const tamano of tamanosSinVasos(s)) {
-    alertas.push({ insumoClave: s.tamanos[tamano].vasoInsumoClave, tipo: 'sin vasos', nombre: `Se acabaron los vasos de ${tamano}` })
+    const clave = s.tamanos[tamano].vasoInsumoClave
+    avisos.push({ insumoClave: clave, tipo: 'sin vasos', nombre: `Se acabaron los vasos de ${tamano}`, existencia: 0, negativo: false })
   }
   for (const insumo of Object.values(s.insumos)) {
-    const existencia = existenciaInsumo(insumo.clave)
     if (!generaAvisoCompra(insumo)) continue
-    if (insumo.stockObjetivo == null) continue
-    const umbral = insumo.umbralReorden ?? s.parametros.umbralReordenPorPrioridad[insumo.prioridad ?? 'media']
-    if (existencia <= 0) alertas.push({ insumoClave: insumo.clave, tipo: 'agotado', nombre: insumo.nombre })
-    else if (existencia <= umbral * insumo.stockObjetivo) alertas.push({ insumoClave: insumo.clave, tipo: 'reorden', nombre: insumo.nombre })
+    const { existencia, stockObjetivoEfectivo, consumo14d } = s.existencias[insumo.clave] ?? { existencia: 0, stockObjetivoEfectivo: null, consumo14d: 0 }
+    const tipos = evaluarAlertasReorden(
+      { insumo, existencia, stockObjetivo: stockObjetivoEfectivo, consumoDiario14d: consumo14d / 14 },
+      s.parametros,
+      new Date(),
+    ).map((a) => a.tipo)
+    // Un agotado ya implica reorden y cobertura: se muestra un solo aviso por insumo, el más grave.
+    const tipo = (['agotado', 'reorden', 'cobertura'] as const).find((t) => tipos.includes(t))
+    if (tipo) avisos.push({ insumoClave: insumo.clave, tipo, nombre: insumo.nombre, existencia, negativo: existencia < 0 })
   }
-  return alertas
+  return avisos.sort(
+    (a, b) =>
+      ORDEN_AVISO[a.tipo] - ORDEN_AVISO[b.tipo] ||
+      ORDEN_PRIORIDAD[s.insumos[a.insumoClave]?.prioridad ?? 'media'] - ORDEN_PRIORIDAD[s.insumos[b.insumoClave]?.prioridad ?? 'media'] ||
+      a.nombre.localeCompare(b.nombre),
+  )
 }

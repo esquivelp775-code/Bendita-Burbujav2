@@ -15,12 +15,12 @@ import type {
   Insumo,
   Leche,
   Parametros,
-  RegistroPrecio,
   Tamano,
   Turno,
 } from '../calculos'
-import { desgloseLinea, evaluarAlertasReorden, precioVigenteEn, resolverLineasConsumo } from '../calculos'
+import { comisionEfectivaDe, desgloseLinea, evaluarAlertasReorden, resolverLineasConsumo } from '../calculos'
 import { supabase } from '../supabase/client'
+import { leerPaginado } from '../supabase/paginar'
 import {
   cancelarPedido as rpcCancelarPedido,
   movimientosDesdeConsumo,
@@ -78,11 +78,28 @@ export interface PrecioManual {
   manual: boolean
 }
 
+/** Existencia agregada en la base (vista existencias_insumo): una fila por insumo, nunca el kárdex. */
+export interface ExistenciaStore {
+  existencia: number
+  /** Objetivo manual del insumo o, si no hay, el automático por compras de 60 días. */
+  stockObjetivoEfectivo: number | null
+  /** Unidades físicas consumidas por ventas en los últimos 14 días. */
+  consumo14d: number
+}
+
+/** Config de plataforma con sus componentes crudos; `comisionEfectiva` siempre se deriva de ellos. */
+export interface ConfigPlataformaStore extends ConfigPlataforma {
+  comisionBase: number
+  uberOne: number
+  uberOneProporcion: number
+  marketing: number
+}
+
 export interface EstadoStore {
   parametros: Parametros
   turnos: Turno[]
   canales: CanalStore[]
-  configPlataformaPorCanal: Record<string, ConfigPlataforma>
+  configPlataformaPorCanal: Record<string, ConfigPlataformaStore>
   configPublicoPorCanal: Record<string, ConfigPublico>
   insumos: Record<string, Insumo>
   categorias: Record<string, Categoria>
@@ -94,7 +111,7 @@ export interface EstadoStore {
   preciosPublico: Record<string, Record<string, PrecioManual>>
   pedidos: PedidoStore[]
   ventaLineas: VentaLineaStore[]
-  movimientos: { fecha: string; insumoClave: string; cantidad: number; tipo: string; origenId?: string }[]
+  existencias: Record<string, ExistenciaStore>
   activos: ActivoStore[]
   ultimoCanal?: string
   ultimoTamano?: string
@@ -131,7 +148,7 @@ function estadoVacio(): EstadoStore {
     preciosPublico: {},
     pedidos: [],
     ventaLineas: [],
-    movimientos: [],
+    existencias: {},
     activos: [],
     primerUsoCompleto: false,
     cargando: true,
@@ -192,6 +209,7 @@ async function cargarInsumos() {
       clave: row.clave,
       nombre: row.nombre,
       categoria: row.categoria,
+      unidad: row.unidad,
       costoUnitarioNeto: row.costo_fisico_neto / (1 - row.merma),
       merma: row.merma,
       prioridad: row.prioridad,
@@ -354,28 +372,19 @@ async function cargarAdicionales() {
 }
 
 async function cargarPrecios() {
-  const { data, error } = await supabase.from('precios').select('*')
+  // La vista ya resuelve el vigente (el más reciente con vigente_desde <= now()); el historial se queda
+  // en `precios` sin bajarlo entero. Un precio con vigencia futura entra al recargar después de su fecha.
+  const { data, error } = await supabase.from('precios_vigentes').select('*')
   if (error) throw error
-  // Historial completo por bebida × tamaño × canal; el vigente es el más reciente que ya aplica hoy
-  // (un precio con vigencia futura espera su fecha, y ninguno anterior se sobrescribe).
-  const historial = new Map<string, { canal: string; bebida: string; tamano: string; registros: RegistroPrecio[] }>()
+  const preciosApp: EstadoStore['preciosApp'] = {}
+  const preciosPublico: EstadoStore['preciosPublico'] = {}
   for (const row of data ?? []) {
     const bebida = bebidaNombrePorId[row.bebida_id]
     const tamano = tamanoNombrePorId[row.tamano_id]
     if (!bebida || !tamano) continue
-    const llave = `${row.canal_tipo}|${bebida}|${tamano}`
-    if (!historial.has(llave)) historial.set(llave, { canal: row.canal_tipo, bebida, tamano, registros: [] })
-    historial.get(llave)!.registros.push({ precio: row.precio, manual: row.manual, vigenteDesde: row.vigente_desde })
-  }
-  const preciosApp: EstadoStore['preciosApp'] = {}
-  const preciosPublico: EstadoStore['preciosPublico'] = {}
-  const ahora = new Date()
-  for (const { canal, bebida, tamano, registros } of historial.values()) {
-    const vigente = precioVigenteEn(registros, ahora)
-    if (!vigente) continue
-    const bucket = canal === 'app' ? preciosApp : preciosPublico
+    const bucket = row.canal_tipo === 'app' ? preciosApp : preciosPublico
     bucket[bebida] ??= {}
-    bucket[bebida][tamano] = { precio: vigente.precio, manual: vigente.manual }
+    bucket[bebida][tamano] = { precio: row.precio, manual: row.manual }
   }
   return { preciosApp, preciosPublico }
 }
@@ -399,12 +408,19 @@ async function cargarCanalesYConfig() {
     canalNombrePorId[row.id] = row.nombre
   }
 
-  const configPlataformaPorCanal: Record<string, ConfigPlataforma> = {}
+  const configPlataformaPorCanal: Record<string, ConfigPlataformaStore> = {}
   for (const row of plataformaRows ?? []) {
     const nombre = canalNombrePorId[row.canal_id]
     if (!nombre) continue
+    const componentes = {
+      comisionBase: row.comision_base,
+      uberOne: row.uber_one ?? 0,
+      uberOneProporcion: row.uber_one_proporcion ?? 0,
+      marketing: row.marketing ?? 0,
+    }
     configPlataformaPorCanal[nombre] = {
-      comisionEfectiva: row.comision_base + row.uber_one * row.uber_one_proporcion + row.marketing,
+      ...componentes,
+      comisionEfectiva: comisionEfectivaDe(componentes),
       ivaSobreComision: row.iva_sobre_comision,
       retencionIsr: row.retencion_isr,
       retencionIva: row.retencion_iva,
@@ -458,13 +474,31 @@ async function cargarActivos(): Promise<ActivoStore[]> {
   }))
 }
 
+/**
+ * Inicio de la ventana de ventas que vive en memoria: el lunes de la semana pasada. Cubre Hoy, la
+ * semana en curso y la comparación con la semana anterior; los rangos más largos van por RPC agregada.
+ */
+export function inicioVentanaVentas(hoy = new Date()): Date {
+  const d = new Date(hoy)
+  d.setHours(0, 0, 0, 0)
+  const dia = d.getDay() // 0 domingo
+  d.setDate(d.getDate() + (dia === 0 ? -6 : 1 - dia) - 7)
+  return d
+}
+
 async function cargarVentas() {
-  const [{ data: pedidosRows, error: e1 }, { data: lineasRows, error: e2 }] = await Promise.all([
-    supabase.from('pedidos').select('*').order('fecha_hora'),
-    supabase.from('venta_lineas').select('*'),
-  ])
-  if (e1) throw e1
-  if (e2) throw e2
+  const desde = inicioVentanaVentas().toISOString()
+  const pedidosRows = await leerPaginado<any>((a, b) =>
+    supabase.from('pedidos').select('*').gte('fecha_hora', desde).order('fecha_hora').order('id').range(a, b),
+  )
+  const lineasRows = await leerPaginado<any>((a, b) =>
+    supabase
+      .from('venta_lineas')
+      .select('*, pedidos!inner(fecha_hora)')
+      .gte('pedidos.fecha_hora', desde)
+      .order('id')
+      .range(a, b),
+  )
 
   const pedidos: PedidoStore[] = (pedidosRows ?? []).map((p) => ({
     id: p.id,
@@ -510,16 +544,20 @@ async function cargarVentas() {
   return { pedidos, ventaLineas }
 }
 
-async function cargarMovimientos() {
-  const { data, error } = await supabase.from('movimientos_inventario').select('*').order('fecha')
+async function cargarExistencias() {
+  const { data, error } = await supabase.from('existencias_insumo').select('*')
   if (error) throw error
-  return (data ?? []).map((m) => ({
-    fecha: m.fecha,
-    insumoClave: insumoClavePorId[m.insumo_id] ?? '',
-    cantidad: m.cantidad,
-    tipo: m.tipo,
-    origenId: m.origen_id ?? undefined,
-  }))
+  const existencias: Record<string, ExistenciaStore> = {}
+  for (const row of data ?? []) {
+    const clave = insumoClavePorId[row.insumo_id]
+    if (!clave) continue
+    existencias[clave] = {
+      existencia: row.existencia,
+      stockObjetivoEfectivo: row.stock_objetivo_efectivo,
+      consumo14d: row.consumo_14d,
+    }
+  }
+  return existencias
 }
 
 export async function cargarTodo(): Promise<void> {
@@ -537,7 +575,7 @@ export async function cargarTodo(): Promise<void> {
     const { canales, configPlataformaPorCanal, configPublicoPorCanal } = await cargarCanalesYConfig()
     const activos = await cargarActivos()
     const { pedidos, ventaLineas } = await cargarVentas()
-    const movimientos = await cargarMovimientos()
+    const existencias = await cargarExistencias()
 
     set(() => ({
       parametros,
@@ -555,7 +593,7 @@ export async function cargarTodo(): Promise<void> {
       preciosPublico,
       pedidos,
       ventaLineas,
-      movimientos,
+      existencias,
       activos,
       primerUsoCompleto: true,
       cargando: false,
@@ -575,7 +613,12 @@ export function limpiar() {
 // ─── Derivados (idénticos a localStore) ────────────────────────────────────
 
 export function existenciaInsumo(insumoClave: string): number {
-  return estado.movimientos.filter((m) => m.insumoClave === insumoClave).reduce((acc, m) => acc + m.cantidad, 0)
+  return estado.existencias[insumoClave]?.existencia ?? 0
+}
+
+/** Objetivo efectivo (manual o automático por compras) y consumo de 14 días del insumo. */
+export function datosExistencia(insumoClave: string): ExistenciaStore {
+  return estado.existencias[insumoClave] ?? { existencia: 0, stockObjetivoEfectivo: null, consumo14d: 0 }
 }
 
 export function precioAppVigente(bebidaNombre: string, tamanoNombre: string): number {
@@ -586,10 +629,14 @@ export function precioPublicoVigente(bebidaNombre: string, tamanoNombre: string)
   return estado.preciosPublico[bebidaNombre]?.[tamanoNombre]?.precio ?? 0
 }
 
-export function alertasInsumo(insumoClave: string, consumoDiario14d = 0) {
+export function alertasInsumo(insumoClave: string) {
   const insumo = estado.insumos[insumoClave]
-  const existencia = existenciaInsumo(insumoClave)
-  return evaluarAlertasReorden({ insumo, existencia, stockObjetivo: insumo.stockObjetivo ?? null, consumoDiario14d }, estado.parametros, new Date())
+  const { existencia, stockObjetivoEfectivo, consumo14d } = datosExistencia(insumoClave)
+  return evaluarAlertasReorden(
+    { insumo, existencia, stockObjetivo: stockObjetivoEfectivo, consumoDiario14d: consumo14d / 14 },
+    estado.parametros,
+    new Date(),
+  )
 }
 
 // ─── Acciones — Ajustes ─────────────────────────────────────────────────
@@ -634,14 +681,29 @@ export async function setPrecio(bebidaNombre: string, tamanoNombre: string, cana
   })
 }
 
-export async function actualizarConfigPlataforma(canalNombre: string, cambios: Partial<ConfigPlataforma>) {
+type CambiosPlataforma = Partial<Pick<ConfigPlataformaStore, 'comisionBase' | 'uberOne' | 'uberOneProporcion' | 'marketing' | 'retencionIsr' | 'retencionIva'>>
+
+/** Cada componente va a su columna; la comisión efectiva nunca se guarda, se deriva al leer. */
+export async function actualizarConfigPlataforma(canalNombre: string, cambios: CambiosPlataforma) {
+  const columnas: Record<keyof CambiosPlataforma, string> = {
+    comisionBase: 'comision_base',
+    uberOne: 'uber_one',
+    uberOneProporcion: 'uber_one_proporcion',
+    marketing: 'marketing',
+    retencionIsr: 'retencion_isr',
+    retencionIva: 'retencion_iva',
+  }
   const patch: Record<string, number> = {}
-  if (cambios.comisionEfectiva != null) patch.comision_base = cambios.comisionEfectiva
-  if (cambios.retencionIsr != null) patch.retencion_isr = cambios.retencionIsr
-  if (cambios.retencionIva != null) patch.retencion_iva = cambios.retencionIva
+  for (const [campo, valor] of Object.entries(cambios) as [keyof CambiosPlataforma, number | undefined][]) {
+    if (valor != null) patch[columnas[campo]] = valor
+  }
   const { error } = await supabase.from('config_plataforma').update(patch).eq('canal_id', canalIdPorNombre[canalNombre])
   if (error) throw error
-  set((s) => ({ ...s, configPlataformaPorCanal: { ...s.configPlataformaPorCanal, [canalNombre]: { ...s.configPlataformaPorCanal[canalNombre], ...cambios } } }))
+  set((s) => {
+    const nueva = { ...s.configPlataformaPorCanal[canalNombre], ...cambios }
+    nueva.comisionEfectiva = comisionEfectivaDe(nueva)
+    return { ...s, configPlataformaPorCanal: { ...s.configPlataformaPorCanal, [canalNombre]: nueva } }
+  })
 }
 
 /** Hoy sólo el rango de margen de Público se edita desde Ajustes. */
@@ -769,13 +831,13 @@ export async function registrarPedidoConItems(input: CerrarPedidoInput): Promise
   })
 
   const { pedidos, ventaLineas } = await cargarVentas()
-  const movimientos = await cargarMovimientos()
+  const existencias = await cargarExistencias()
   const ultimoItem = input.items[input.items.length - 1]
   set((s) => ({
     ...s,
     pedidos,
     ventaLineas,
-    movimientos,
+    existencias,
     ultimoCanal: canal.nombre,
     ultimoTamano: ultimoItem?.tamano.nombre ?? s.ultimoTamano,
     ultimaLeche: ultimoItem?.lecheElegida?.nombre ?? s.ultimaLeche,
@@ -787,8 +849,8 @@ export async function registrarPedidoConItems(input: CerrarPedidoInput): Promise
 export async function cancelarPedido(pedidoId: string) {
   await rpcCancelarPedido(pedidoId)
   const { pedidos, ventaLineas } = await cargarVentas()
-  const movimientos = await cargarMovimientos()
-  set((s) => ({ ...s, pedidos, ventaLineas, movimientos }))
+  const existencias = await cargarExistencias()
+  set((s) => ({ ...s, pedidos, ventaLineas, existencias }))
 }
 
 // ─── Acciones — Inventario ──────────────────────────────────────────────
@@ -806,14 +868,30 @@ export async function registrarCompraLocal(insumoClave: string, presentaciones: 
     ],
   })
   const insumos = await cargarInsumos()
-  const movimientos = await cargarMovimientos()
-  set((s) => ({ ...s, insumos, movimientos }))
+  const existencias = await cargarExistencias()
+  set((s) => ({ ...s, insumos, existencias }))
+}
+
+/** Objetivo manual del insumo; null regresa al automático (máxima existencia tras compras de 60 días). */
+export async function setStockObjetivo(insumoClave: string, stockObjetivo: number | null) {
+  const { error } = await supabase.from('insumos').update({ stock_objetivo: stockObjetivo }).eq('id', insumoIdPorClave[insumoClave])
+  if (error) throw error
+  const existencias = await cargarExistencias()
+  set((s) => ({ ...s, insumos: { ...s.insumos, [insumoClave]: { ...s.insumos[insumoClave], stockObjetivo } }, existencias }))
+}
+
+// ─── Cuenta ─────────────────────────────────────────────────────────────
+
+export async function cambiarContrasena(nueva: string) {
+  if (nueva.length < 8) throw new Error('Usa al menos 8 caracteres')
+  const { error } = await supabase.auth.updateUser({ password: nueva })
+  if (error) throw error
 }
 
 export async function registrarConteoLocal(insumoClave: string, cantidadContada: number, nota?: string) {
   await rpcRegistrarConteo(insumoIdPorClave[insumoClave], cantidadContada, nota)
-  const movimientos = await cargarMovimientos()
-  set((s) => ({ ...s, movimientos }))
+  const existencias = await cargarExistencias()
+  set((s) => ({ ...s, existencias }))
 }
 
 export async function altaActivo(activo: Omit<ActivoStore, 'id'>) {

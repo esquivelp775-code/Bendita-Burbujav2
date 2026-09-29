@@ -1,7 +1,11 @@
+import { useState } from 'react'
+import { CampoNumero } from '../../components/CampoNumero'
+import { formatoPorcentaje } from '../../lib/format'
 import {
   actualizarConfigPlataforma,
   actualizarConfigPublico,
   actualizarMargenPublico,
+  cambiarContrasena,
   setAdicionalActivo,
   setBebidaActiva,
   setCanalActivo,
@@ -9,15 +13,68 @@ import {
 } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
 
-function Toggle({ activo, onChange }: { activo: boolean; onChange: (v: boolean) => void | Promise<void> }) {
+function Toggle({ activo, etiqueta, onChange }: { activo: boolean; etiqueta: string; onChange: (v: boolean) => Promise<unknown> }) {
+  const [error, setError] = useState<string | null>(null)
   return (
-    <button
-      onClick={() => Promise.resolve(onChange(!activo)).catch((e) => window.alert(`No se pudo guardar: ${e instanceof Error ? e.message : e}`))}
-      className={`w-11 h-6 rounded-full relative transition-colors ${activo ? 'bg-ok' : 'bg-border'}`}
-      aria-pressed={activo}
-    >
-      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-bg transition-transform ${activo ? 'translate-x-5' : 'translate-x-0.5'}`} />
-    </button>
+    <span className="flex flex-col items-end gap-1">
+      <button
+        onClick={() =>
+          onChange(!activo)
+            .then(() => setError(null))
+            .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+        }
+        className={`w-11 h-6 rounded-full relative transition-colors ${activo ? 'bg-ok' : 'bg-border'}`}
+        aria-pressed={activo}
+        aria-label={etiqueta}
+      >
+        <span className={`absolute top-0.5 left-0 w-5 h-5 rounded-full bg-bg transition-transform ${activo ? 'translate-x-5' : 'translate-x-0.5'}`} />
+      </button>
+      {error && <span className="text-xs text-ink-dark">No se guardó: {error}</span>}
+    </span>
+  )
+}
+
+function TarjetaCuenta() {
+  const [nueva, setNueva] = useState('')
+  const [mensaje, setMensaje] = useState<{ ok: boolean; texto: string } | null>(null)
+  const [guardando, setGuardando] = useState(false)
+
+  return (
+    <section className="border border-border rounded p-4 bg-surface flex flex-col gap-3">
+      <h2 className="text-sm label-uppercase m-0">Cuenta</h2>
+      <p className="text-sm text-muted m-0">
+        La app entra sola con esta contraseña. Si la cambias aquí, avísale a Claude para que actualice la de entrada automática en Netlify.
+      </p>
+      <label className="flex flex-col gap-1 text-sm">
+        Contraseña nueva
+        <input
+          type="password"
+          autoComplete="new-password"
+          className="h-10 border border-border rounded px-2 bg-bg"
+          value={nueva}
+          onChange={(e) => setNueva(e.target.value)}
+        />
+      </label>
+      <button
+        disabled={guardando || nueva.length === 0}
+        className="h-11 rounded bg-ink text-bg font-semibold disabled:opacity-50"
+        onClick={async () => {
+          setGuardando(true)
+          try {
+            await cambiarContrasena(nueva)
+            setNueva('')
+            setMensaje({ ok: true, texto: 'Contraseña cambiada.' })
+          } catch (e) {
+            setMensaje({ ok: false, texto: e instanceof Error ? e.message : String(e) })
+          } finally {
+            setGuardando(false)
+          }
+        }}
+      >
+        {guardando ? 'Guardando…' : 'Cambiar contraseña'}
+      </button>
+      {mensaje && <p className={`text-sm m-0 ${mensaje.ok ? 'text-ok' : 'text-ink-dark'}`}>{mensaje.texto}</p>}
+    </section>
   )
 }
 
@@ -25,7 +82,7 @@ export function AjustesScreen() {
   const canales = useStore((s) => s.canales)
   const configPlataformaPorCanal = useStore((s) => s.configPlataformaPorCanal)
   const configPublicoPorCanal = useStore((s) => s.configPublicoPorCanal)
-  const tamanos = useStore((s) => Object.values(s.tamanos))
+  const tamanos = useStore((s) => Object.values(s.tamanos).sort((a, b) => a.ml - b.ml))
   const bebidas = useStore((s) => Object.values(s.bebidas))
   const adicionales = useStore((s) => Object.values(s.adicionales))
   const parametros = useStore((s) => s.parametros)
@@ -37,89 +94,105 @@ export function AjustesScreen() {
       <section className="flex flex-col gap-3">
         <h2 className="text-sm label-uppercase">Canales</h2>
         {canales.map((c) => {
-          const configPlataforma = configPlataformaPorCanal[c.nombre]
-          const configPublico = configPublicoPorCanal[c.nombre]
+          const plataforma = configPlataformaPorCanal[c.nombre]
+          const publico = configPublicoPorCanal[c.nombre]
           return (
             <div key={c.nombre} className="border border-border rounded p-4 bg-surface flex flex-col gap-3">
               <div className="flex justify-between items-center">
                 <span className="font-display text-lg">{c.nombre}</span>
-                <Toggle activo={c.activo} onChange={(v) => setCanalActivo(c.nombre, v)} />
+                <Toggle etiqueta={`Canal ${c.nombre} activo`} activo={c.activo} onChange={(v) => setCanalActivo(c.nombre, v)} />
               </div>
-              {configPlataforma && (
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <label className="flex flex-col gap-1">
-                    Comisión efectiva
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="h-9 border border-border rounded px-2 bg-bg"
-                      value={configPlataforma.comisionEfectiva}
-                      onChange={(e) => actualizarConfigPlataforma(c.nombre, { comisionEfectiva: Number(e.target.value) }).catch(console.error)}
+              {plataforma && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <CampoNumero
+                      etiqueta="Comisión base"
+                      porcentaje
+                      min={0}
+                      max={100}
+                      valor={plataforma.comisionBase}
+                      onGuardar={(v) => actualizarConfigPlataforma(c.nombre, { comisionBase: v })}
                     />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    Retención ISR
-                    <input
-                      type="number"
-                      step="0.001"
-                      className="h-9 border border-border rounded px-2 bg-bg"
-                      value={configPlataforma.retencionIsr}
-                      onChange={(e) => actualizarConfigPlataforma(c.nombre, { retencionIsr: Number(e.target.value) }).catch(console.error)}
+                    <CampoNumero
+                      etiqueta="Marketing / anuncios"
+                      porcentaje
+                      min={0}
+                      max={100}
+                      valor={plataforma.marketing}
+                      onGuardar={(v) => actualizarConfigPlataforma(c.nombre, { marketing: v })}
                     />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    Retención IVA
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="h-9 border border-border rounded px-2 bg-bg"
-                      value={configPlataforma.retencionIva}
-                      onChange={(e) => actualizarConfigPlataforma(c.nombre, { retencionIva: Number(e.target.value) }).catch(console.error)}
+                    <CampoNumero
+                      etiqueta="Uber One (cargo extra)"
+                      porcentaje
+                      min={0}
+                      max={100}
+                      valor={plataforma.uberOne}
+                      onGuardar={(v) => actualizarConfigPlataforma(c.nombre, { uberOne: v })}
                     />
-                  </label>
-                </div>
+                    <CampoNumero
+                      etiqueta="Pedidos con Uber One"
+                      porcentaje
+                      min={0}
+                      max={100}
+                      valor={plataforma.uberOneProporcion}
+                      onGuardar={(v) => actualizarConfigPlataforma(c.nombre, { uberOneProporcion: v })}
+                    />
+                    <CampoNumero
+                      etiqueta="Retención ISR"
+                      porcentaje
+                      min={0}
+                      max={100}
+                      valor={plataforma.retencionIsr}
+                      onGuardar={(v) => actualizarConfigPlataforma(c.nombre, { retencionIsr: v })}
+                    />
+                    <CampoNumero
+                      etiqueta="Retención IVA"
+                      porcentaje
+                      min={0}
+                      max={100}
+                      valor={plataforma.retencionIva}
+                      onGuardar={(v) => actualizarConfigPlataforma(c.nombre, { retencionIva: v })}
+                    />
+                  </div>
+                  <p className="text-sm m-0 border-t border-border pt-2">
+                    Comisión efectiva: <strong className="tabular">{formatoPorcentaje(plataforma.comisionEfectiva)}</strong>
+                    <span className="text-muted"> = base + Uber One × pedidos con Uber One + marketing</span>
+                  </p>
+                </>
               )}
-              {configPublico && (
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <label className="flex flex-col gap-1">
-                    Margen mínimo (%)
-                    <input
-                      type="number"
-                      step="0.5"
-                      className="h-9 border border-border rounded px-2 bg-bg"
-                      value={Math.round(parametros.margenPublicoMin * 1000) / 10}
-                      onChange={(e) => actualizarMargenPublico({ margenPublicoMin: Number(e.target.value) / 100 }).catch(console.error)}
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    Margen máximo (%)
-                    <input
-                      type="number"
-                      step="0.5"
-                      className="h-9 border border-border rounded px-2 bg-bg"
-                      value={Math.round(parametros.margenPublicoMax * 1000) / 10}
-                      onChange={(e) => actualizarMargenPublico({ margenPublicoMax: Number(e.target.value) / 100 }).catch(console.error)}
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    Descuento de adicionales vs. app
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="h-9 border border-border rounded px-2 bg-bg"
-                      value={configPublico.descuentoVsApp}
-                      onChange={(e) => actualizarConfigPublico(c.nombre, { descuentoVsApp: Number(e.target.value) }).catch(console.error)}
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    Envío cobrado (default)
-                    <input
-                      type="number"
-                      className="h-9 border border-border rounded px-2 bg-bg"
-                      value={configPublico.envioCobradoDefault}
-                      onChange={(e) => actualizarConfigPublico(c.nombre, { envioCobradoDefault: Number(e.target.value) }).catch(console.error)}
-                    />
-                  </label>
+              {publico && (
+                <div className="grid grid-cols-2 gap-3">
+                  <CampoNumero
+                    etiqueta="Margen mínimo"
+                    porcentaje
+                    min={0}
+                    max={100}
+                    valor={parametros.margenPublicoMin}
+                    onGuardar={(v) => actualizarMargenPublico({ margenPublicoMin: v })}
+                  />
+                  <CampoNumero
+                    etiqueta="Margen máximo"
+                    porcentaje
+                    min={0}
+                    max={100}
+                    valor={parametros.margenPublicoMax}
+                    onGuardar={(v) => actualizarMargenPublico({ margenPublicoMax: v })}
+                  />
+                  <CampoNumero
+                    etiqueta="Descuento de adicionales vs. app"
+                    porcentaje
+                    min={0}
+                    max={100}
+                    valor={publico.descuentoVsApp}
+                    onGuardar={(v) => actualizarConfigPublico(c.nombre, { descuentoVsApp: v })}
+                  />
+                  <CampoNumero
+                    etiqueta="Envío cobrado (sugerido)"
+                    sufijo="$"
+                    min={0}
+                    valor={publico.envioCobradoDefault}
+                    onGuardar={(v) => actualizarConfigPublico(c.nombre, { envioCobradoDefault: v })}
+                  />
                 </div>
               )}
             </div>
@@ -131,8 +204,11 @@ export function AjustesScreen() {
         <h2 className="text-sm label-uppercase">Tamaños</h2>
         {tamanos.map((t) => (
           <div key={t.nombre} className="flex justify-between items-center py-2 border-b border-border">
-            <span>{t.nombre}</span>
-            <Toggle activo={t.activo} onChange={(v) => setTamanoActivo(t.nombre, v)} />
+            <span>
+              {t.nombre}
+              {t.canales && <span className="block text-xs text-muted">{t.canales.join(' · ')}</span>}
+            </span>
+            <Toggle etiqueta={`Tamaño ${t.nombre} activo`} activo={t.activo} onChange={(v) => setTamanoActivo(t.nombre, v)} />
           </div>
         ))}
       </section>
@@ -142,7 +218,7 @@ export function AjustesScreen() {
         {bebidas.map((b) => (
           <div key={b.nombre} className="flex justify-between items-center py-2 border-b border-border">
             <span>{b.nombre}</span>
-            <Toggle activo={b.activa} onChange={(v) => setBebidaActiva(b.nombre, v)} />
+            <Toggle etiqueta={`${b.nombre} activa`} activo={b.activa} onChange={(v) => setBebidaActiva(b.nombre, v)} />
           </div>
         ))}
       </section>
@@ -152,10 +228,12 @@ export function AjustesScreen() {
         {adicionales.map((a) => (
           <div key={a.nombre} className="flex justify-between items-center py-2 border-b border-border">
             <span>{a.nombre}</span>
-            <Toggle activo={a.activo} onChange={(v) => setAdicionalActivo(a.nombre, v)} />
+            <Toggle etiqueta={`${a.nombre} activo`} activo={a.activo} onChange={(v) => setAdicionalActivo(a.nombre, v)} />
           </div>
         ))}
       </section>
+
+      <TarjetaCuenta />
     </div>
   )
 }
