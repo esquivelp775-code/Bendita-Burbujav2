@@ -179,6 +179,11 @@ async function cargarInsumos() {
   insumoIdPorClave = {}
   insumoClavePorId = {}
   for (const row of data ?? []) {
+    // El mapa id↔clave incluye inactivos (movimientos viejos pueden apuntarles); el catálogo no,
+    // para que un insumo retirado no aparezca en inventario, compras ni alertas.
+    insumoIdPorClave[row.clave] = row.id
+    insumoClavePorId[row.id] = row.clave
+    if (!row.activo) continue
     insumos[row.clave] = {
       clave: row.clave,
       nombre: row.nombre,
@@ -190,8 +195,6 @@ async function cargarInsumos() {
       stockObjetivo: row.stock_objetivo,
       caducaAbiertoDias: row.caduca_abierto_dias,
     }
-    insumoIdPorClave[row.clave] = row.id
-    insumoClavePorId[row.id] = row.clave
   }
   return insumos
 }
@@ -300,7 +303,16 @@ async function cargarAdicionales() {
   adicionalIdPorNombre = {}
   const adicionalNombrePorId: Record<string, string> = {}
   for (const row of adicionalesRows ?? []) {
-    adicionales[row.nombre] = { nombre: row.nombre, precio: row.precio, minutos: row.minutos, activo: row.activo, receta: [], aplicaACategorias: [], excluyeBebidas: [] }
+    adicionales[row.nombre] = {
+      nombre: row.nombre,
+      precio: row.precio,
+      minutos: row.minutos,
+      activo: row.activo,
+      receta: [],
+      aplicaACategorias: [],
+      excluyeBebidas: [],
+      canales: row.canales ?? undefined,
+    }
     adicionalIdPorNombre[row.nombre] = row.id
     adicionalNombrePorId[row.id] = row.nombre
   }
