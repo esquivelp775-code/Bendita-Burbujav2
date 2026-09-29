@@ -5,11 +5,10 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { ErrorBoundary } from './ErrorBoundary'
 import './index.css'
-import { registerSW } from 'virtual:pwa-register'
+import { iniciarActualizaciones } from './lib/actualizacion'
 
-// Cuando hay una versión nueva, recarga sola en vez de dejar a alguien atorado en un build viejo
-// (con chunks que Netlify ya borró) hasta que le baje manualmente al caché del navegador.
-registerSW({ immediate: true, onNeedRefresh: () => window.location.reload() })
+// Versión nueva: se aplica sola si no hay pedido abierto; si lo hay, se avisa (ver actualizacion.ts).
+iniciarActualizaciones()
 
 const queryClient = new QueryClient()
 

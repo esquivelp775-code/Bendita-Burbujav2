@@ -48,11 +48,16 @@ export interface PedidoPayload {
   folio_plataforma?: string | null
   estado: 'abierto' | 'cerrado' | 'cancelado'
   notas?: string | null
+  forma_pago?: FormaPago | null
 }
+
+export type FormaPago = 'efectivo' | 'transferencia' | 'tarjeta' | 'plataforma'
 
 export interface RegistrarPedidoPayload {
   pedido: PedidoPayload
   lineas: VentaLineaPayload[]
+  /** Movimientos que dependen del pedido completo y no de una línea (p. ej. charolas). */
+  movimientos_pedido?: (MovimientoPayload & { nota?: string })[]
 }
 
 /** Convierte el consumo nominal (calculos.ts) + insumoId por clave en movimientos con merma aplicada (5.6). */
@@ -79,6 +84,12 @@ export async function registrarPedido(payload: RegistrarPedidoPayload): Promise<
 export async function cancelarPedido(pedidoId: string): Promise<void> {
   const { error } = await supabase.rpc('cancelar_pedido', { p_pedido_id: pedidoId })
   if (error) throw error
+}
+
+export async function clientePorTelefonoONombre(nombre?: string, telefono?: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('cliente_por_telefono_o_nombre', { p_nombre: nombre ?? null, p_telefono: telefono ?? null })
+  if (error) throw error
+  return (data as string | null) ?? null
 }
 
 export interface CompraLineaPayload {

@@ -1009,3 +1009,116 @@ export function desgloseDelDia(
 export function avanceSemana(gananciaSemana: number, metaUtilidadSemanal: number): number {
   return metaUtilidadSemanal > 0 ? gananciaSemana / metaUtilidadSemanal : 0
 }
+
+// ─── Pedido: charolas, porciones posibles y botanas (auditoría 29/09) ───────
+
+/** v3 §3: una charola de 4 por cada 4 bebidas, sólo en pedidos con 2 o más bebidas. */
+export function charolasDelPedido(bebidasDelPedido: number): number {
+  return bebidasDelPedido >= 2 ? Math.ceil(bebidasDelPedido / 4) : 0
+}
+
+export interface FaltanteInsumo {
+  insumoClave: string
+  necesita: number
+  hay: number
+}
+
+export interface PorcionesPosibles {
+  /** Cuántas más se pueden hacer con la existencia actual (0 si falta algo). null si no se consume nada contable. */
+  porciones: number | null
+  /** Insumos que no alcanzan para una porción (existencia menor a lo que pide una). */
+  faltantes: FaltanteInsumo[]
+}
+
+/**
+ * "Te alcanza para…": con el consumo físico de una porción (ya con merma, 5.6) y las existencias,
+ * cuántas porciones completas salen y qué insumo no alcanza. La caja avisa pero deja vender.
+ */
+export function porcionesPosibles(
+  consumoFisico: { insumoClave: string; cantidadFisica: number }[],
+  existencia: (insumoClave: string) => number,
+): PorcionesPosibles {
+  const porInsumo = new Map<string, number>()
+  for (const { insumoClave, cantidadFisica } of consumoFisico) {
+    const necesita = Math.abs(cantidadFisica)
+    if (necesita > 0) porInsumo.set(insumoClave, (porInsumo.get(insumoClave) ?? 0) + necesita)
+  }
+  if (porInsumo.size === 0) return { porciones: null, faltantes: [] }
+  let porciones = Infinity
+  const faltantes: FaltanteInsumo[] = []
+  for (const [insumoClave, necesita] of porInsumo) {
+    const hay = existencia(insumoClave)
+    const alcanza = Math.floor(Math.max(0, hay) / necesita + 1e-9)
+    porciones = Math.min(porciones, alcanza)
+    if (hay < necesita) faltantes.push({ insumoClave, necesita, hay })
+  }
+  return { porciones, faltantes }
+}
+
+export interface Botana {
+  nombre: string
+  precioApp: number
+  precioPublico: number
+  /** Insumo que se descuenta (la bolsita). Sin él, se vende sin costo de producto. */
+  insumoClave?: string
+}
+
+export interface DesgloseBotanaInput {
+  botana: Botana
+  canalTipo: CanalTipo
+  factorEvento?: number
+  insumos: Record<string, Insumo>
+  parametros: Parametros
+  configPlataforma?: ConfigPlataforma
+}
+
+/**
+ * Desglose de una botana (spec §5.5 aplicado a un producto empacado): mismo IVA, comisión y
+ * retenciones que una bebida; el costo es la bolsita. Sin vaso, sin indirectos por bebida y sin
+ * mano de obra (se entrega cerrada).
+ */
+export function desgloseBotana(input: DesgloseBotanaInput): DesgloseLinea {
+  const { botana, canalTipo, factorEvento, insumos, parametros, configPlataforma } = input
+  let precio: number
+  if (canalTipo === 'plataforma') precio = botana.precioApp
+  else if (canalTipo === 'publico') precio = botana.precioPublico
+  else {
+    if (factorEvento == null) throw new Error('factorEvento es requerido para canal evento')
+    precio = redondeo5(botana.precioApp * factorEvento)
+  }
+
+  const ingresoSinIva = precio / (1 + parametros.ivaVenta)
+  const ivaTrasladado = precio - ingresoSinIva
+  const esPlataforma = canalTipo === 'plataforma'
+  const comision = esPlataforma ? precio * (configPlataforma?.comisionEfectiva ?? 0) : 0
+  const ivaComision = esPlataforma ? comision * (configPlataforma?.ivaSobreComision ?? 0) : 0
+
+  const insumo = botana.insumoClave ? insumos[botana.insumoClave] : undefined
+  if (botana.insumoClave && !insumo) throw new Error(`Insumo desconocido: ${botana.insumoClave}`)
+  const costoProducto = insumo ? insumo.costoUnitarioNeto : 0
+
+  const utilidad = ingresoSinIva - comision - costoProducto
+  const retencionIsr = esPlataforma ? ingresoSinIva * (configPlataforma?.retencionIsr ?? 0) : 0
+  const retencionIva = esPlataforma ? ingresoSinIva * (configPlataforma?.retencionIva ?? 0) : 0
+  const depositoEsperado = esPlataforma ? precio - comision - ivaComision - retencionIsr - retencionIva : precio
+
+  return {
+    precio: redondeoCentavos(precio),
+    ivaTrasladado: redondeoCentavos(ivaTrasladado),
+    ingresoSinIva: redondeoCentavos(ingresoSinIva),
+    comision: redondeoCentavos(comision),
+    ivaComision: redondeoCentavos(ivaComision),
+    insumos: redondeoCentavos(costoProducto),
+    empaque: 0,
+    vasoTapa: 0,
+    indirectos: 0,
+    minutos: 0,
+    tarifaHora: 0,
+    manoDeObra: 0,
+    utilidad: redondeoCentavos(utilidad),
+    retencionIsr: redondeoCentavos(retencionIsr),
+    retencionIva: redondeoCentavos(retencionIva),
+    depositoEsperado: redondeoCentavos(depositoEsperado),
+    consumo: botana.insumoClave ? [{ insumoClave: botana.insumoClave, cantidad: 1 }] : [],
+  }
+}

@@ -6,27 +6,41 @@ import type {
   Adicional,
   AdicionalElegido,
   Bebida,
+  Botana,
   CanalTipo,
   Categoria,
   ConfigPlataforma,
   ConfigPublico,
   ConsumoInsumo,
   DesgloseLinea,
+  EscalaEvento,
   Insumo,
   Leche,
   Parametros,
   Tamano,
   Turno,
 } from '../calculos'
-import { comisionEfectivaDe, desgloseLinea, evaluarAlertasReorden, resolverLineasConsumo } from '../calculos'
+import {
+  charolasDelPedido,
+  comisionEfectivaDe,
+  desgloseBotana,
+  desgloseLinea,
+  evaluarAlertasReorden,
+  resolverLineasConsumo,
+} from '../calculos'
+import { db } from '../offline/db'
+import { configurarCola, encolarCancelacion, encolarPedido, onCambioCola, quitarPendiente, sincronizar, type ResumenCola } from '../offline/queue'
 import { supabase } from '../supabase/client'
 import { leerPaginado } from '../supabase/paginar'
 import {
   cancelarPedido as rpcCancelarPedido,
+  clientePorTelefonoONombre,
   movimientosDesdeConsumo,
   registrarCompra as rpcRegistrarCompra,
   registrarConteo as rpcRegistrarConteo,
-  registrarPedido as rpcRegistrarPedido,
+  type FormaPago,
+  type MovimientoPayload,
+  type RegistrarPedidoPayload,
   type VentaLineaPayload,
 } from '../supabase/ventas'
 
@@ -44,6 +58,7 @@ export interface VentaLineaStore {
   canalNombre: string
   tipo: 'bebida' | 'botana' | 'cargo_servicio'
   bebidaNombre?: string
+  botanaNombre?: string
   tamanoNombre?: string
   lecheNombre?: string
   adicionalesElegidos: AdicionalElegido[]
@@ -60,6 +75,10 @@ export interface PedidoStore {
   estado: 'abierto' | 'cerrado' | 'cancelado'
   clienteNombre?: string
   eventoNombre?: string
+  formaPago?: FormaPago
+  folio?: string
+  /** Guardado en el teléfono, todavía sin subir a la base. */
+  porSubir?: boolean
 }
 
 export interface ActivoStore {
@@ -113,12 +132,26 @@ export interface EstadoStore {
   ventaLineas: VentaLineaStore[]
   existencias: Record<string, ExistenciaStore>
   activos: ActivoStore[]
+  botanas: Record<string, Botana & { activa: boolean; descripcion?: string }>
+  escalasEvento: EscalaEvento[]
+  configEvento: ConfigEventoStore
   ultimoCanal?: string
   ultimoTamano?: string
   ultimaLeche?: string
   primerUsoCompleto: boolean
   cargando: boolean
   error?: string
+  /** El último intento de hablar con la base falló: se está trabajando con lo guardado en el teléfono. */
+  sinConexion: boolean
+  /** Ventas guardadas en el teléfono que todavía no suben. */
+  pendientesPorSubir: number
+}
+
+export interface ConfigEventoStore {
+  minimoBebidas: number
+  traslado: number
+  equipoHieloDesechables: number
+  horasMontaje: number
 }
 
 function estadoVacio(): EstadoStore {
@@ -150,8 +183,13 @@ function estadoVacio(): EstadoStore {
     ventaLineas: [],
     existencias: {},
     activos: [],
+    botanas: {},
+    escalasEvento: [],
+    configEvento: { minimoBebidas: 30, traslado: 400, equipoHieloDesechables: 300, horasMontaje: 3 },
     primerUsoCompleto: false,
     cargando: true,
+    sinConexion: false,
+    pendientesPorSubir: 0,
   }
 }
 
@@ -172,6 +210,120 @@ let adicionalIdPorNombre: Record<string, string> = {}
 let lecheIdPorNombre: Record<string, string> = {}
 let categoriaIdPorNombre: Record<string, string> = {}
 let categoriaNombrePorId: Record<string, string> = {}
+let botanaIdPorNombre: Record<string, string> = {}
+let botanaNombrePorId: Record<string, string> = {}
+
+/** Los mapas id ↔ nombre viajan en el snapshot: sin ellos no se puede armar un pedido sin señal. */
+function exportarMapas() {
+  return {
+    insumoIdPorClave, insumoClavePorId, bebidaIdPorNombre, bebidaNombrePorId, tamanoIdPorNombre, tamanoNombrePorId,
+    canalIdPorNombre, canalNombrePorId, parametrosId, adicionalIdPorNombre, lecheIdPorNombre, categoriaIdPorNombre,
+    categoriaNombrePorId, botanaIdPorNombre, botanaNombrePorId,
+  }
+}
+
+function importarMapas(m: ReturnType<typeof exportarMapas>) {
+  ;({
+    insumoIdPorClave, insumoClavePorId, bebidaIdPorNombre, bebidaNombrePorId, tamanoIdPorNombre, tamanoNombrePorId,
+    canalIdPorNombre, canalNombrePorId, parametrosId, adicionalIdPorNombre, lecheIdPorNombre, categoriaIdPorNombre,
+    categoriaNombrePorId, botanaIdPorNombre, botanaNombrePorId,
+  } = m)
+  botanaIdPorNombre ??= {}
+  botanaNombrePorId ??= {}
+}
+
+// ─── Datos del servidor + cola del teléfono ─────────────────────────────────
+// Lo que la app muestra (pedidos, líneas, existencias) es lo último que dijo la base MÁS lo que
+// espera en la cola sin señal. Así una venta sin señal ya cuenta en Hoy, en la caja y en Inventario.
+
+let servidor: Pick<EstadoStore, 'pedidos' | 'ventaLineas' | 'existencias'> = { pedidos: [], ventaLineas: [], existencias: {} }
+let cola: ResumenCola = { pedidos: [], cancelaciones: [] }
+
+function combinar(s: EstadoStore): EstadoStore {
+  const cancelados = new Set(cola.cancelaciones)
+  const idsServidor = new Set(servidor.pedidos.map((p) => p.id))
+  const pedidos = servidor.pedidos.map((p) => (cancelados.has(p.id) ? { ...p, estado: 'cancelado' as const } : p))
+  const ventaLineas = [...servidor.ventaLineas]
+  const existencias: Record<string, ExistenciaStore> = { ...servidor.existencias }
+  for (const pendiente of cola.pedidos) {
+    const vista = pendiente.vista as { pedido: PedidoStore; lineas: VentaLineaStore[]; deltas: Record<string, number> } | undefined
+    if (!vista || idsServidor.has(pendiente.id)) continue
+    pedidos.push({ ...vista.pedido, porSubir: true })
+    ventaLineas.push(...vista.lineas)
+    for (const [clave, delta] of Object.entries(vista.deltas)) {
+      const actual = existencias[clave] ?? { existencia: 0, stockObjetivoEfectivo: null, consumo14d: 0 }
+      existencias[clave] = { ...actual, existencia: actual.existencia + delta, consumo14d: actual.consumo14d - Math.min(0, delta) }
+    }
+  }
+  pedidos.sort((a, b) => a.fechaHora.localeCompare(b.fechaHora))
+  return { ...s, pedidos, ventaLineas, existencias, pendientesPorSubir: cola.pedidos.length + cola.cancelaciones.length }
+}
+
+function actualizarServidor(parcial: Partial<typeof servidor>) {
+  servidor = { ...servidor, ...parcial }
+  set((s) => combinar(s))
+}
+
+let colaIniciada = false
+/** Engancha la cola sin señal al store. Se llama una vez al arrancar la app (no en pruebas). */
+export function iniciarStore(opciones: { asegurarSesion: () => Promise<boolean> }) {
+  if (colaIniciada) return
+  colaIniciada = true
+  configurarCola({
+    asegurarSesion: opciones.asegurarSesion,
+    resolverCliente: (c) => clientePorTelefonoONombre(c.nombre, c.telefono),
+    alSincronizar: () => void refrescarVentasYExistencias(),
+  })
+  onCambioCola((c) => {
+    cola = c
+    set((s) => combinar(s))
+  })
+}
+
+async function refrescarVentasYExistencias() {
+  try {
+    const [{ pedidos, ventaLineas }, existencias] = await Promise.all([cargarVentas(), cargarExistencias()])
+    actualizarServidor({ pedidos, ventaLineas, existencias })
+    set((s) => ({ ...s, sinConexion: false }))
+    void guardarSnapshot()
+  } catch {
+    set((s) => ({ ...s, sinConexion: true }))
+  }
+}
+
+// ─── Snapshot en el teléfono (abrir sin señal) ──────────────────────────────
+
+const CAMPOS_EFIMEROS = ['cargando', 'error', 'sinConexion', 'pendientesPorSubir'] as const
+
+async function guardarSnapshot() {
+  try {
+    const copia: Record<string, unknown> = { ...estado, ...servidor }
+    for (const c of CAMPOS_EFIMEROS) delete copia[c]
+    await db.snapshot.put({ clave: 'estado', estado: copia, mapas: exportarMapas(), guardadoEn: Date.now() })
+  } catch {
+    /* sin IndexedDB (modo privado): la app sigue funcionando, sólo no abre sin señal */
+  }
+}
+
+/** Sin sesión o sin red: la app sigue con lo guardado y lo dice en el encabezado. */
+export function marcarSinConexion(sinConexion: boolean) {
+  set((s) => ({ ...s, sinConexion }))
+}
+
+/** Carga lo último guardado en el teléfono. true si había algo (la app puede abrir sin esperar a la red). */
+export async function hidratarDesdeSnapshot(): Promise<boolean> {
+  try {
+    const snap = await db.snapshot.get('estado')
+    if (!snap) return false
+    importarMapas(snap.mapas as ReturnType<typeof exportarMapas>)
+    const guardado = snap.estado as EstadoStore
+    servidor = { pedidos: guardado.pedidos ?? [], ventaLineas: guardado.ventaLineas ?? [], existencias: guardado.existencias ?? {} }
+    set(() => combinar({ ...estadoVacio(), ...guardado, cargando: false, error: undefined, sinConexion: false }))
+    return true
+  } catch {
+    return false
+  }
+}
 
 function notificar() {
   for (const fn of escuchas) fn()
@@ -474,6 +626,42 @@ async function cargarActivos(): Promise<ActivoStore[]> {
   }))
 }
 
+async function cargarBotanas() {
+  const { data, error } = await supabase.from('botanas').select('*').order('nombre')
+  if (error) throw error
+  const botanas: EstadoStore['botanas'] = {}
+  botanaIdPorNombre = {}
+  botanaNombrePorId = {}
+  for (const row of data ?? []) {
+    botanas[row.nombre] = {
+      nombre: row.nombre,
+      descripcion: row.descripcion ?? undefined,
+      precioApp: row.precio_app,
+      precioPublico: row.precio_publico,
+      insumoClave: row.insumo_id ? insumoClavePorId[row.insumo_id] : undefined,
+      activa: row.activa,
+    }
+    botanaIdPorNombre[row.nombre] = row.id
+    botanaNombrePorId[row.id] = row.nombre
+  }
+  return botanas
+}
+
+async function cargarEvento() {
+  const [{ data: escalasRows, error: e1 }, { data: configRows, error: e2 }] = await Promise.all([
+    supabase.from('evento_escalas').select('*').order('desde'),
+    supabase.from('config_evento').select('*').limit(1),
+  ])
+  if (e1) throw e1
+  if (e2) throw e2
+  const escalasEvento: EscalaEvento[] = (escalasRows ?? []).map((e) => ({ desde: e.desde, hasta: e.hasta, factor: e.factor, cargoServicio: e.cargo_servicio }))
+  const c = configRows?.[0]
+  const configEvento: ConfigEventoStore = c
+    ? { minimoBebidas: c.minimo_bebidas, traslado: c.traslado, equipoHieloDesechables: c.equipo_hielo_desechables, horasMontaje: c.horas_montaje }
+    : estadoVacio().configEvento
+  return { escalasEvento, configEvento }
+}
+
 /**
  * Inicio de la ventana de ventas que vive en memoria: el lunes de la semana pasada. Cubre Hoy, la
  * semana en curso y la comparación con la semana anterior; los rangos más largos van por RPC agregada.
@@ -489,7 +677,7 @@ export function inicioVentanaVentas(hoy = new Date()): Date {
 async function cargarVentas() {
   const desde = inicioVentanaVentas().toISOString()
   const pedidosRows = await leerPaginado<any>((a, b) =>
-    supabase.from('pedidos').select('*').gte('fecha_hora', desde).order('fecha_hora').order('id').range(a, b),
+    supabase.from('pedidos').select('*, clientes(nombre)').gte('fecha_hora', desde).order('fecha_hora').order('id').range(a, b),
   )
   const lineasRows = await leerPaginado<any>((a, b) =>
     supabase
@@ -507,6 +695,9 @@ async function cargarVentas() {
     envioCobrado: p.envio_cobrado,
     costoEnvio: p.costo_envio,
     estado: p.estado,
+    formaPago: p.forma_pago ?? undefined,
+    folio: p.folio_plataforma ?? undefined,
+    clienteNombre: p.clientes?.nombre ?? undefined,
   }))
   const pedidoPorId = new Map(pedidos.map((p) => [p.id, p]))
 
@@ -517,6 +708,7 @@ async function cargarVentas() {
     canalNombre: pedidoPorId.get(l.pedido_id)?.canalNombre ?? '',
     tipo: l.tipo,
     bebidaNombre: l.bebida_id ? bebidaNombrePorId[l.bebida_id] : undefined,
+    botanaNombre: l.botana_id ? botanaNombrePorId[l.botana_id] : undefined,
     tamanoNombre: l.tamano_id ? tamanoNombrePorId[l.tamano_id] : undefined,
     cantidad: l.cantidad,
     adicionalesElegidos: Array.isArray(l.adicionales) ? l.adicionales.map((a: any) => ({ nombre: a.nombre, sabor: a.sabor })) : [],
@@ -560,8 +752,12 @@ async function cargarExistencias() {
   return existencias
 }
 
-export async function cargarTodo(): Promise<void> {
-  set((s) => ({ ...s, cargando: true, error: undefined }))
+/**
+ * Carga todo de la base. Con `enSegundoPlano` (la app ya abrió desde el snapshot) no muestra la
+ * pantalla de carga y, si falla la red, sigue con lo guardado y marca "sin conexión" en vez de error.
+ */
+export async function cargarTodo(opciones: { enSegundoPlano?: boolean } = {}): Promise<void> {
+  if (!opciones.enSegundoPlano) set((s) => ({ ...s, cargando: true, error: undefined }))
   try {
     const parametros = await cargarParametros()
     const turnos = await cargarTurnos()
@@ -574,38 +770,54 @@ export async function cargarTodo(): Promise<void> {
     const { preciosApp, preciosPublico } = await cargarPrecios()
     const { canales, configPlataformaPorCanal, configPublicoPorCanal } = await cargarCanalesYConfig()
     const activos = await cargarActivos()
+    const botanas = await cargarBotanas()
+    const { escalasEvento, configEvento } = await cargarEvento()
     const { pedidos, ventaLineas } = await cargarVentas()
     const existencias = await cargarExistencias()
 
-    set(() => ({
-      parametros,
-      turnos,
-      canales,
-      configPlataformaPorCanal,
-      configPublicoPorCanal,
-      insumos,
-      categorias,
-      tamanos,
-      bebidas,
-      leches,
-      adicionales,
-      preciosApp,
-      preciosPublico,
-      pedidos,
-      ventaLineas,
-      existencias,
-      activos,
-      primerUsoCompleto: true,
-      cargando: false,
-    }))
+    servidor = { pedidos, ventaLineas, existencias }
+    set((s) =>
+      combinar({
+        ...s,
+        parametros,
+        turnos,
+        canales,
+        configPlataformaPorCanal,
+        configPublicoPorCanal,
+        insumos,
+        categorias,
+        tamanos,
+        bebidas,
+        leches,
+        adicionales,
+        preciosApp,
+        preciosPublico,
+        activos,
+        botanas,
+        escalasEvento,
+        configEvento,
+        primerUsoCompleto: true,
+        cargando: false,
+        error: undefined,
+        sinConexion: false,
+      }),
+    )
+    void guardarSnapshot()
+    void sincronizar()
   } catch (e) {
-    set((s) => ({ ...s, cargando: false, error: e instanceof Error ? e.message : String(e) }))
+    const mensaje = e instanceof Error ? e.message : String(e)
+    if (opciones.enSegundoPlano) {
+      set((s) => ({ ...s, cargando: false, sinConexion: true }))
+      return
+    }
+    set((s) => ({ ...s, cargando: false, error: mensaje }))
     throw e
   }
 }
 
 /** Limpia el estado (logout). */
 export function limpiar() {
+  servidor = { pedidos: [], ventaLineas: [], existencias: {} }
   estado = estadoVacio()
   notificar()
 }
@@ -728,7 +940,8 @@ export async function actualizarConfigPublico(canalNombre: string, cambios: Part
 
 // ─── Acciones — Venta ───────────────────────────────────────────────────
 
-export interface ItemCarrito {
+export interface ItemBebida {
+  tipo: 'bebida'
   fechaHora: Date
   bebida: Bebida
   tamano: Tamano
@@ -738,9 +951,32 @@ export interface ItemCarrito {
   factorEvento?: number
 }
 
-export function calcularDesgloseItem(canalNombre: string, item: Omit<ItemCarrito, 'cantidad'>): DesgloseLinea {
+export interface ItemBotana {
+  tipo: 'botana'
+  fechaHora: Date
+  botana: Botana
+  cantidad: number
+  factorEvento?: number
+}
+
+export type ItemCarrito = ItemBebida | ItemBotana
+
+type SinCantidad<T> = T extends unknown ? Omit<T, 'cantidad'> : never
+
+export function calcularDesgloseItem(canalNombre: string, item: SinCantidad<ItemCarrito>): DesgloseLinea {
   const canal = estado.canales.find((c) => c.nombre === canalNombre)
   if (!canal) throw new Error(`Canal desconocido: ${canalNombre}`)
+  const configPlataforma = canal.tipo === 'plataforma' ? estado.configPlataformaPorCanal[canal.nombre] : undefined
+  if (item.tipo === 'botana') {
+    return desgloseBotana({
+      botana: item.botana,
+      canalTipo: canal.tipo,
+      factorEvento: item.factorEvento,
+      insumos: estado.insumos,
+      parametros: estado.parametros,
+      configPlataforma,
+    })
+  }
   return desgloseLinea({
     fechaHora: item.fechaHora,
     canalTipo: canal.tipo,
@@ -757,46 +993,93 @@ export function calcularDesgloseItem(canalNombre: string, item: Omit<ItemCarrito
     categorias: estado.categorias,
     parametros: estado.parametros,
     turnos: estado.turnos,
-    configPlataforma: canal.tipo === 'plataforma' ? estado.configPlataformaPorCanal[canal.nombre] : undefined,
+    configPlataforma,
     configPublico: canal.tipo === 'publico' ? estado.configPublicoPorCanal[canal.nombre] : undefined,
   })
+}
+
+/** Movimientos físicos por unidad de un producto (con merma, 5.6): receta + adicionales + vaso + cierre, o la bolsita. */
+function movimientosDeItem(item: ItemCarrito): MovimientoPayload[] {
+  if (item.tipo === 'botana') {
+    return item.botana.insumoClave ? [{ insumo_id: insumoIdPorClave[item.botana.insumoClave], cantidad: -1 }] : []
+  }
+  const adicionalesResueltos = item.adicionalesElegidos.map((el) => ({ adicional: estado.adicionales[el.nombre], sabor: el.sabor }))
+  const consumo: ConsumoInsumo[] = resolverLineasConsumo(item.bebida, item.tamano, item.lecheElegida, adicionalesResueltos)
+  const mermaPorClave: Record<string, number> = {}
+  for (const c of consumo) mermaPorClave[c.insumoClave] = estado.insumos[c.insumoClave]?.merma ?? 0
+  const movimientos = movimientosDesdeConsumo(consumo, insumoIdPorClave, mermaPorClave)
+  movimientos.push({ insumo_id: insumoIdPorClave[item.tamano.vasoInsumoClave], cantidad: -1 })
+  for (const clave of item.tamano.cierreInsumoClaves) movimientos.push({ insumo_id: insumoIdPorClave[clave], cantidad: -1 })
+  return movimientos
+}
+
+/** Consumo físico de una unidad por clave de insumo — para "te alcanza para…" en la caja. */
+export function consumoFisicoDeItem(item: ItemCarrito): { insumoClave: string; cantidadFisica: number }[] {
+  return movimientosDeItem(item).map((m) => ({ insumoClave: insumoClavePorId[m.insumo_id], cantidadFisica: m.cantidad }))
 }
 
 export interface CerrarPedidoInput {
   canalNombre: string
   items: ItemCarrito[]
-  eventoNombre?: string
   clienteNombre?: string
+  clienteTelefono?: string
   envioCobrado?: number
   costoEnvio?: number
+  formaPago?: FormaPago
+  folio?: string
 }
 
+const CLAVE_CHAROLA = 'charola_4'
+
+/**
+ * Guarda el pedido primero en el teléfono y lo sube en cuanto se puede (idempotente por id). Devuelve
+ * de inmediato: la venta ya cuenta en Hoy, la caja e Inventario aunque no haya señal.
+ */
 export async function registrarPedidoConItems(input: CerrarPedidoInput): Promise<string> {
   const canal = estado.canales.find((c) => c.nombre === input.canalNombre)
   if (!canal) throw new Error(`Canal desconocido: ${input.canalNombre}`)
+  if (input.items.length === 0) throw new Error('El pedido está vacío')
 
   const pedidoId = crypto.randomUUID()
   const fechaIso = new Date().toISOString()
+  const deltas: Record<string, number> = {}
+  const sumarDelta = (insumoId: string, cantidad: number) => {
+    const clave = insumoClavePorId[insumoId]
+    if (clave) deltas[clave] = (deltas[clave] ?? 0) + cantidad
+  }
 
+  const lineasVista: VentaLineaStore[] = []
   const lineas: VentaLineaPayload[] = input.items.map((item) => {
     const desglose = calcularDesgloseItem(canal.nombre, item)
-    const adicionalesResueltos = item.adicionalesElegidos.map((el) => ({ adicional: estado.adicionales[el.nombre], sabor: el.sabor }))
-    const consumo: ConsumoInsumo[] = resolverLineasConsumo(item.bebida, item.tamano, item.lecheElegida, adicionalesResueltos)
-    const mermaPorClave: Record<string, number> = {}
-    for (const c of consumo) mermaPorClave[c.insumoClave] = estado.insumos[c.insumoClave]?.merma ?? 0
-    const movimientos = movimientosDesdeConsumo(consumo, insumoIdPorClave, mermaPorClave)
-    movimientos.push({ insumo_id: insumoIdPorClave[item.tamano.vasoInsumoClave], cantidad: -1 })
-    for (const clave of item.tamano.cierreInsumoClaves) {
-      movimientos.push({ insumo_id: insumoIdPorClave[clave], cantidad: -1 })
-    }
-
+    const movimientos = movimientosDeItem(item)
+    for (const m of movimientos) sumarDelta(m.insumo_id, m.cantidad * item.cantidad)
+    const id = crypto.randomUUID()
+    const adicionales =
+      item.tipo === 'bebida'
+        ? item.adicionalesElegidos.map((a) => ({ adicional_id: adicionalIdPorNombre[a.nombre], nombre: a.nombre, sabor: a.sabor, precio: estado.adicionales[a.nombre].precio }))
+        : []
+    lineasVista.push({
+      id,
+      pedidoId,
+      fechaHora: fechaIso,
+      canalNombre: canal.nombre,
+      tipo: item.tipo,
+      bebidaNombre: item.tipo === 'bebida' ? item.bebida.nombre : undefined,
+      botanaNombre: item.tipo === 'botana' ? item.botana.nombre : undefined,
+      tamanoNombre: item.tipo === 'bebida' ? item.tamano.nombre : undefined,
+      lecheNombre: item.tipo === 'bebida' ? item.lecheElegida?.nombre : undefined,
+      adicionalesElegidos: item.tipo === 'bebida' ? item.adicionalesElegidos : [],
+      cantidad: item.cantidad,
+      desglose,
+    })
     return {
-      id: crypto.randomUUID(),
-      tipo: 'bebida',
-      bebida_id: bebidaIdPorNombre[item.bebida.nombre],
-      tamano_id: tamanoIdPorNombre[item.tamano.nombre],
-      leche_id: item.lecheElegida ? lecheIdPorNombre[item.lecheElegida.nombre] : undefined,
-      adicionales: item.adicionalesElegidos.map((a) => ({ adicional_id: adicionalIdPorNombre[a.nombre], nombre: a.nombre, sabor: a.sabor, precio: estado.adicionales[a.nombre].precio })),
+      id,
+      tipo: item.tipo,
+      bebida_id: item.tipo === 'bebida' ? bebidaIdPorNombre[item.bebida.nombre] : undefined,
+      botana_id: item.tipo === 'botana' ? botanaIdPorNombre[item.botana.nombre] : undefined,
+      tamano_id: item.tipo === 'bebida' ? tamanoIdPorNombre[item.tamano.nombre] : undefined,
+      leche_id: item.tipo === 'bebida' && item.lecheElegida ? lecheIdPorNombre[item.lecheElegida.nombre] : undefined,
+      adicionales,
       cantidad: item.cantidad,
       precio: desglose.precio,
       iva_trasladado: desglose.ivaTrasladado,
@@ -814,11 +1097,21 @@ export async function registrarPedidoConItems(input: CerrarPedidoInput): Promise
       retencion_isr: desglose.retencionIsr,
       retencion_iva: desglose.retencionIva,
       deposito_esperado: desglose.depositoEsperado,
-      movimientos: movimientos.map((m) => ({ ...m, cantidad: m.cantidad })),
+      movimientos,
     }
   })
 
-  await rpcRegistrarPedido({
+  // v3 §3: charolas por pedido (no por línea); su costo ya va prorrateado en indirectos.
+  const movimientosPedido: RegistrarPedidoPayload['movimientos_pedido'] = []
+  const bebidasDelPedido = input.items.filter((i) => i.tipo === 'bebida').reduce((acc, i) => acc + i.cantidad, 0)
+  const charolas = charolasDelPedido(bebidasDelPedido)
+  if (charolas > 0 && insumoIdPorClave[CLAVE_CHAROLA]) {
+    movimientosPedido.push({ insumo_id: insumoIdPorClave[CLAVE_CHAROLA], cantidad: -charolas, nota: `${bebidasDelPedido} bebidas` })
+    sumarDelta(insumoIdPorClave[CLAVE_CHAROLA], -charolas)
+  }
+
+  const esPlataforma = canal.tipo === 'plataforma'
+  const payload: RegistrarPedidoPayload = {
     pedido: {
       id: pedidoId,
       fecha_hora: fechaIso,
@@ -826,31 +1119,56 @@ export async function registrarPedidoConItems(input: CerrarPedidoInput): Promise
       envio_cobrado: input.envioCobrado ?? 0,
       costo_envio: input.costoEnvio ?? 0,
       estado: 'cerrado',
+      forma_pago: esPlataforma ? 'plataforma' : (input.formaPago ?? null),
+      folio_plataforma: esPlataforma ? input.folio?.trim() || null : null,
     },
     lineas,
-  })
+    movimientos_pedido: movimientosPedido,
+  }
+  const pedidoVista: PedidoStore = {
+    id: pedidoId,
+    fechaHora: fechaIso,
+    canalNombre: canal.nombre,
+    envioCobrado: input.envioCobrado ?? 0,
+    costoEnvio: input.costoEnvio ?? 0,
+    estado: 'cerrado',
+    clienteNombre: input.clienteNombre?.trim() || undefined,
+    formaPago: payload.pedido.forma_pago ?? undefined,
+    folio: payload.pedido.folio_plataforma ?? undefined,
+  }
+  const cliente =
+    input.clienteNombre?.trim() || input.clienteTelefono?.trim()
+      ? { nombre: input.clienteNombre?.trim() || undefined, telefono: input.clienteTelefono?.trim() || undefined }
+      : undefined
 
-  const { pedidos, ventaLineas } = await cargarVentas()
-  const existencias = await cargarExistencias()
-  const ultimoItem = input.items[input.items.length - 1]
+  await encolarPedido(payload, { pedido: pedidoVista, lineas: lineasVista, deltas }, cliente)
+
+  const ultimaBebida = [...input.items].reverse().find((i): i is ItemBebida => i.tipo === 'bebida')
   set((s) => ({
     ...s,
-    pedidos,
-    ventaLineas,
-    existencias,
     ultimoCanal: canal.nombre,
-    ultimoTamano: ultimoItem?.tamano.nombre ?? s.ultimoTamano,
-    ultimaLeche: ultimoItem?.lecheElegida?.nombre ?? s.ultimaLeche,
+    ultimoTamano: ultimaBebida?.tamano.nombre ?? s.ultimoTamano,
+    ultimaLeche: ultimaBebida?.lecheElegida?.nombre ?? s.ultimaLeche,
   }))
-
   return pedidoId
 }
 
-export async function cancelarPedido(pedidoId: string) {
-  await rpcCancelarPedido(pedidoId)
-  const { pedidos, ventaLineas } = await cargarVentas()
-  const existencias = await cargarExistencias()
-  set((s) => ({ ...s, pedidos, ventaLineas, existencias }))
+/**
+ * Cancelar no borra (regla 6): marca el pedido y revierte su inventario. Si el pedido todavía no
+ * subía, basta con sacarlo de la cola. Si ya subió y no hay señal, la cancelación espera en la cola.
+ */
+export async function cancelarPedido(pedidoId: string): Promise<'quitado' | 'cancelado' | 'en cola'> {
+  if (await quitarPendiente(pedidoId)) return 'quitado'
+  try {
+    await rpcCancelarPedido(pedidoId)
+    await refrescarVentasYExistencias()
+    return 'cancelado'
+  } catch (e) {
+    const sinRed = !navigator.onLine || (e instanceof Error && /fetch|network|red/i.test(e.message))
+    if (!sinRed) throw e
+    await encolarCancelacion(pedidoId)
+    return 'en cola'
+  }
 }
 
 // ─── Acciones — Inventario ──────────────────────────────────────────────
@@ -868,16 +1186,16 @@ export async function registrarCompraLocal(insumoClave: string, presentaciones: 
     ],
   })
   const insumos = await cargarInsumos()
-  const existencias = await cargarExistencias()
-  set((s) => ({ ...s, insumos, existencias }))
+  set((s) => ({ ...s, insumos }))
+  actualizarServidor({ existencias: await cargarExistencias() })
 }
 
 /** Objetivo manual del insumo; null regresa al automático (máxima existencia tras compras de 60 días). */
 export async function setStockObjetivo(insumoClave: string, stockObjetivo: number | null) {
   const { error } = await supabase.from('insumos').update({ stock_objetivo: stockObjetivo }).eq('id', insumoIdPorClave[insumoClave])
   if (error) throw error
-  const existencias = await cargarExistencias()
-  set((s) => ({ ...s, insumos: { ...s.insumos, [insumoClave]: { ...s.insumos[insumoClave], stockObjetivo } }, existencias }))
+  set((s) => ({ ...s, insumos: { ...s.insumos, [insumoClave]: { ...s.insumos[insumoClave], stockObjetivo } } }))
+  actualizarServidor({ existencias: await cargarExistencias() })
 }
 
 // ─── Cuenta ─────────────────────────────────────────────────────────────
@@ -890,8 +1208,7 @@ export async function cambiarContrasena(nueva: string) {
 
 export async function registrarConteoLocal(insumoClave: string, cantidadContada: number, nota?: string) {
   await rpcRegistrarConteo(insumoIdPorClave[insumoClave], cantidadContada, nota)
-  const existencias = await cargarExistencias()
-  set((s) => ({ ...s, existencias }))
+  actualizarServidor({ existencias: await cargarExistencias() })
 }
 
 export async function altaActivo(activo: Omit<ActivoStore, 'id'>) {

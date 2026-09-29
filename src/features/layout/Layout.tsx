@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { actualizarAhora, onVersionNueva } from '../../lib/actualizacion'
 import { modoLocal } from '../../lib/modo'
-import { pendientesCount } from '../../lib/offline/queue'
+import { sincronizar } from '../../lib/offline/queue'
 import { alertasInventario } from '../../lib/store/selectors'
 import { useStore } from '../../lib/store/useStore'
 
@@ -75,18 +76,16 @@ function Contador({ n }: { n: number }) {
 }
 
 export function Layout() {
-  const [pendientes, setPendientes] = useState(0)
+  const pendientes = useStore((s) => s.pendientesPorSubir)
+  const sinConexion = useStore((s) => s.sinConexion)
   const [online, setOnline] = useState(navigator.onLine)
+  const [versionNueva, setVersionNueva] = useState(false)
   const [masAbierto, setMasAbierto] = useState(false)
   const avisos = useStore((s) => alertasInventario(s).length)
   const ubicacion = useLocation()
 
   useEffect(() => setMasAbierto(false), [ubicacion.pathname])
-
-  useEffect(() => {
-    if (modoLocal) return
-    pendientesCount().then(setPendientes)
-  }, [])
+  useEffect(() => onVersionNueva(setVersionNueva), [])
 
   useEffect(() => {
     const on = () => setOnline(true)
@@ -127,10 +126,26 @@ export function Layout() {
           <div className="flex justify-between items-center gap-2 px-4 py-1.5 border-b border-border bg-card">
             <span className="label-uppercase">Bendita Burbuja{modoLocal ? ' · modo local (sin Supabase todavía)' : ''}</span>
           </div>
-          {!online && (
+          {(!online || sinConexion || pendientes > 0) && (
             <div className="flex items-center gap-2 px-4 py-2 bg-surface border-b border-warn text-warn text-sm font-medium">
-              <span className="flex-1">Sin conexión · Las ventas no se guardan hasta que vuelva la señal</span>
-              {pendientes > 0 && <span className="tabular whitespace-nowrap">{pendientes} ventas por subir</span>}
+              <span className="flex-1">
+                {!online || sinConexion
+                  ? 'Sin conexión · Trabajando con lo guardado en tu teléfono; las ventas se suben cuando vuelva la señal'
+                  : 'Subiendo ventas guardadas en el teléfono…'}
+              </span>
+              {pendientes > 0 && (
+                <button className="tabular whitespace-nowrap underline" onClick={() => void sincronizar()}>
+                  {pendientes} por subir · Reintentar
+                </button>
+              )}
+            </div>
+          )}
+          {versionNueva && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-surface border-b border-border text-sm">
+              <span className="flex-1">Hay una versión nueva de la app. Se instala sola al cerrar el pedido abierto.</span>
+              <button className="underline font-semibold whitespace-nowrap" onClick={actualizarAhora}>
+                Actualizar ya
+              </button>
             </div>
           )}
           <div className="flex-1">
@@ -140,7 +155,7 @@ export function Layout() {
       </div>
 
       {masAbierto && (
-        <div className="md:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setMasAbierto(false)}>
+        <div className="md:hidden fixed inset-0 bg-black/40 z-30" onClick={() => setMasAbierto(false)}>
           <nav
             className="absolute bottom-0 left-0 right-0 bg-bg rounded-t p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] flex flex-col gap-1"
             onClick={(e) => e.stopPropagation()}
@@ -163,7 +178,7 @@ export function Layout() {
       )}
 
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border grid grid-cols-5 pb-[env(safe-area-inset-bottom)]"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border grid grid-cols-5 pb-[env(safe-area-inset-bottom)]"
         aria-label="Navegación principal"
       >
         {NAV_MOVIL.map((item) => (

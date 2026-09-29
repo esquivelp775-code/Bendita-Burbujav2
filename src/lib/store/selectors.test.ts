@@ -40,8 +40,13 @@ function estado(insumos: Insumo[], existencias: Record<string, Partial<Existenci
       Object.entries(existencias).map(([k, v]) => [k, { existencia: 0, stockObjetivoEfectivo: null, consumo14d: 0, ...v }]),
     ),
     activos: [],
+    botanas: {},
+    escalasEvento: [],
+    configEvento: { minimoBebidas: 30, traslado: 400, equipoHieloDesechables: 300, horasMontaje: 3 },
     primerUsoCompleto: true,
     cargando: false,
+    sinConexion: false,
+    pendientesPorSubir: 0,
   }
 }
 
