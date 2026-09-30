@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { InventarioSemanal } from './InventarioSemanal'
+import { Mermas } from './Mermas'
+import { Proveedores } from './Proveedores'
 import { CampoNumero } from '../../components/CampoNumero'
 import { compraSalioCara, generaAvisoCompra, sobrecostoVsReposicion, umbralReorden, type Insumo } from '../../lib/calculos'
 import { formatoCantidad, formatoCostoUnitario, formatoMoneda, formatoPorcentaje } from '../../lib/format'
@@ -10,6 +13,7 @@ import {
   terminarApertura,
   datosExistencia,
   registrarConteoLocal,
+  ajustarExistencia,
   registrarMerma,
   setStockObjetivo,
   type MovimientoKardex,
@@ -20,6 +24,14 @@ import { guardarPrecarga } from '../compras/precargaCompra'
 import { mensajeError } from '../../lib/errores'
 
 const PRIORIDAD_ORDEN = { alta: 0, media: 1, baja: 2 } as const
+
+type PestanaInventario = 'existencias' | 'semanal' | 'mermas' | 'proveedores'
+const PESTANAS_INVENTARIO: { id: PestanaInventario; nombre: string }[] = [
+  { id: 'existencias', nombre: 'Existencias' },
+  { id: 'semanal', nombre: 'Inventario semanal' },
+  { id: 'mermas', nombre: 'Mermas' },
+  { id: 'proveedores', nombre: 'Proveedores' },
+]
 
 const ETIQUETA_AVISO: Record<AvisoInventario['tipo'], string> = {
   'sin vasos': 'Sin vasos',
@@ -53,6 +65,9 @@ export function InventarioScreen() {
   useStore((s) => s.existencias)
   const [fichaAbierta, setFichaAbierta] = useState<string | null>(null)
   const navegar = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const pestana = (params.get('ver') as PestanaInventario | null) ?? 'existencias'
+  const cambiarPestana = (p: PestanaInventario) => setParams(p === 'existencias' ? {} : { ver: p }, { replace: true })
 
   const avisoPorClave = new Map(avisos.filter((a) => AVISOS_DE_COMPRA.includes(a.tipo)).map((a) => [a.insumoClave, a]))
   const filas = insumos
@@ -74,9 +89,26 @@ export function InventarioScreen() {
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-6 max-w-4xl mx-auto">
-      <h1 className="text-3xl">Inventario</h1>
+      <h1 className="text-3xl m-0">Inventario</h1>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 -mt-2" role="tablist">
+        {PESTANAS_INVENTARIO.map((p) => (
+          <button
+            key={p.id}
+            role="tab"
+            aria-selected={pestana === p.id}
+            onClick={() => cambiarPestana(p.id)}
+            className={`h-11 rounded border text-sm font-semibold ${pestana === p.id ? 'bg-ink text-bg border-ink' : 'border-border bg-surface'}`}
+          >
+            {p.nombre}
+          </button>
+        ))}
+      </div>
 
-      {grupos.length > 0 && (
+      {pestana === 'semanal' && <InventarioSemanal />}
+      {pestana === 'mermas' && <Mermas />}
+      {pestana === 'proveedores' && <Proveedores />}
+
+      {pestana === 'existencias' && grupos.length > 0 && (
         <section className="border border-warn rounded p-4 bg-surface flex flex-col gap-4">
           <div className="flex justify-between items-baseline gap-2">
             <h2 className="text-sm label-uppercase m-0 text-warn">Lista de compras · {grupos.reduce((n, g) => n + g.renglones.length, 0)}</h2>
@@ -113,25 +145,27 @@ export function InventarioScreen() {
         </section>
       )}
 
-      <AbiertosYTandas onAbrirFicha={setFichaAbierta} />
+      {pestana === 'existencias' && <AbiertosYTandas onAbrirFicha={setFichaAbierta} />}
 
+      {pestana === 'existencias' && (
       <section className="border border-border rounded p-4 bg-surface">
         <h2 className="text-sm label-uppercase mb-1">Existencia</h2>
         <p className="text-xs text-muted mb-3">
-          Toca un insumo para ver su ficha: movimientos, merma, proveedor y objetivo.
+          Toca "Editar" para modificar la existencia, registrar merma, ver movimientos o cambiar proveedor y objetivo.
           {sinObjetivo > 0 && ` ${sinObjetivo} sin objetivo: sólo avisan cuando se agotan.`}
         </p>
-        <div className="hidden md:grid grid-cols-[1fr_5rem_8rem_8rem] gap-2 text-xs label-uppercase pb-2 border-b border-border">
+        <div className="hidden md:grid grid-cols-[1fr_5rem_8rem_8rem_4rem] gap-2 text-xs label-uppercase pb-2 border-b border-border">
           <span>Insumo</span>
           <span>Prioridad</span>
           <span className="text-right">Existencia</span>
           <span className="text-right">Objetivo</span>
+          <span></span>
         </div>
         {filas.map((f) => (
           <button
             key={f.insumo.clave}
             onClick={() => setFichaAbierta(f.insumo.clave)}
-            className="w-full text-left py-2 border-b border-border text-sm grid grid-cols-[1fr_auto] md:grid-cols-[1fr_5rem_8rem_8rem] gap-2 items-center"
+            className="w-full text-left py-2 border-b border-border text-sm grid grid-cols-[1fr_auto_auto] md:grid-cols-[1fr_5rem_8rem_8rem_4rem] gap-2 items-center"
           >
             <span className="min-w-0">
               {f.insumo.nombre}
@@ -148,9 +182,11 @@ export function InventarioScreen() {
               {f.stockObjetivoEfectivo != null ? formatoCantidad(f.stockObjetivoEfectivo, f.insumo.unidad) : '—'}
               {f.stockObjetivoEfectivo != null && f.insumo.stockObjetivo == null && <span className="text-xs"> auto</span>}
             </span>
+            <span className="justify-self-end h-8 px-2.5 rounded border border-border text-xs font-semibold flex items-center">Editar</span>
           </button>
         ))}
       </section>
+      )}
 
       {fichaAbierta && <FichaInsumoModal insumoClave={fichaAbierta} onCerrar={() => setFichaAbierta(null)} />}
     </div>
@@ -281,7 +317,7 @@ function FichaInsumoModal({ insumoClave, onCerrar }: { insumoClave: string; onCe
               onClick={() => setPestana(p)}
               className={`h-9 px-3 border-b-2 -mb-px ${pestana === p ? 'border-ink font-semibold' : 'border-transparent text-muted'}`}
             >
-              {{ resumen: 'Ficha', conteo: 'Contar', merma: 'Merma', movimientos: 'Movimientos' }[p]}
+              {{ resumen: 'Ficha', conteo: 'Modificar existencia', merma: 'Merma', movimientos: 'Movimientos' }[p]}
             </button>
           ))}
         </div>
@@ -386,16 +422,24 @@ function FichaInsumoModal({ insumoClave, onCerrar }: { insumoClave: string; onCe
   )
 }
 
+const MOTIVOS_AJUSTE = ['Conteo físico', 'Corrección de captura', 'Llegó mercancía sin registrar compra', 'Otro'] as const
+
+/** Modificar la existencia a un valor exacto. La diferencia queda en el kárdex con su motivo; nada se borra. */
 function Conteo({ insumoClave, existencia, unidad, onListo }: { insumoClave: string; existencia: number; unidad?: Insumo['unidad']; onListo: () => void }) {
   const [valor, setValor] = useState(String(Math.max(0, Math.round(existencia * 100) / 100)))
+  const [motivo, setMotivo] = useState<(typeof MOTIVOS_AJUSTE)[number]>('Conteo físico')
+  const [detalle, setDetalle] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const numero = Number(valor.replace(',', '.'))
+  const diferencia = Number.isFinite(numero) ? numero - existencia : null
   async function guardar() {
-    const numero = Number(valor.replace(',', '.'))
     if (!Number.isFinite(numero) || numero < 0) return setError('Escribe una cantidad válida')
     setGuardando(true)
     try {
-      await registrarConteoLocal(insumoClave, numero, 'Conteo manual')
+      const nota = detalle.trim() ? `${motivo}: ${detalle.trim()}` : motivo
+      if (motivo === 'Conteo físico') await registrarConteoLocal(insumoClave, numero, nota)
+      else await ajustarExistencia(insumoClave, numero, nota)
       onListo()
     } catch (e) {
       setError(mensajeError(e))
@@ -405,13 +449,28 @@ function Conteo({ insumoClave, existencia, unidad, onListo }: { insumoClave: str
   }
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <p className="m-0 text-muted">El sistema dice {formatoCantidad(existencia, unidad)}. Escribe lo que contaste; la diferencia queda como ajuste por conteo.</p>
+      <p className="m-0 text-muted">
+        El sistema dice {formatoCantidad(existencia, unidad)}. Escribe cuánto hay en realidad; la diferencia queda registrada con su motivo en Movimientos.
+      </p>
       <label className="flex flex-col gap-1">
-        Lo que contaste
+        Existencia correcta
         <input type="text" inputMode="decimal" className="h-12 border border-border rounded px-3 bg-surface text-lg tabular" value={valor} onChange={(e) => setValor(e.target.value)} />
       </label>
+      {diferencia != null && Math.abs(diferencia) > 1e-9 && (
+        <span className={`text-xs tabular ${diferencia < 0 ? 'text-ink-dark' : 'text-ok'}`}>
+          {diferencia < 0 ? 'Baja' : 'Sube'} {formatoCantidad(Math.abs(diferencia), unidad)}
+        </span>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {MOTIVOS_AJUSTE.map((m) => (
+          <button key={m} onClick={() => setMotivo(m)} className={`h-9 px-3 rounded border text-xs font-semibold ${motivo === m ? 'bg-ink text-bg border-ink' : 'border-border'}`}>
+            {m}
+          </button>
+        ))}
+      </div>
+      <input className="h-10 border border-border rounded px-2 bg-surface" placeholder="Detalle (opcional)" value={detalle} onChange={(e) => setDetalle(e.target.value)} />
       <button disabled={guardando} className="h-12 rounded bg-ink text-bg font-semibold disabled:opacity-60" onClick={guardar}>
-        {guardando ? 'Guardando…' : 'Guardar conteo'}
+        {guardando ? 'Guardando…' : 'Guardar existencia'}
       </button>
       {error && <p className="text-ink-dark m-0">{error}</p>}
     </div>

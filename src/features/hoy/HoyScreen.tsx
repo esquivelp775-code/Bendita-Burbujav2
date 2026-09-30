@@ -26,6 +26,16 @@ export function HoyScreen() {
         <h1 className="text-3xl">{formatoFecha(hoy)}</h1>
       </header>
 
+      {hoy.getDay() === 0 && (
+        <Link to="/inventario?ver=semanal" className="border border-ink rounded p-4 bg-surface flex justify-between items-center gap-3">
+          <span>
+            <span className="font-semibold block">Hoy toca inventario semanal</span>
+            <span className="text-sm text-muted">Cuenta lo que tienes y ve cuánto se perdió en la semana.</span>
+          </span>
+          <span className="font-semibold whitespace-nowrap">Empezar →</span>
+        </Link>
+      )}
+
       <section className="grid gap-4 md:grid-cols-2">
         <div className="border border-border rounded p-5 bg-surface flex flex-col items-center gap-2 text-center">
           <span className="label-uppercase">Hoy te quedan</span>

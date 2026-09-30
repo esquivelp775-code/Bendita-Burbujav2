@@ -1596,14 +1596,22 @@ export async function guardarPasos(bebidaNombre: string, pasos: string[]) {
 }
 
 // ── Proveedores ──
-export async function guardarProveedor(p: Omit<ProveedorStore, 'id'> & { id?: string }) {
+export async function guardarProveedor(p: Omit<ProveedorStore, 'id'> & { id?: string }): Promise<string> {
   const fila = { nombre: p.nombre.trim(), contacto: p.contacto?.trim() || null, notas: p.notas?.trim() || null }
   if (!fila.nombre) throw new Error('Ponle nombre al proveedor')
-  const { error } = p.id ? await supabase.from('proveedores').update(fila).eq('id', p.id) : await supabase.from('proveedores').insert(fila)
-  if (error) throw error
+  let id = p.id
+  if (id) {
+    const { error } = await supabase.from('proveedores').update(fila).eq('id', id)
+    if (error) throw error
+  } else {
+    const { data, error } = await supabase.from('proveedores').insert(fila).select('id').single()
+    if (error) throw error
+    id = data.id as string
+  }
   const proveedores = await cargarProveedores()
   set((s) => ({ ...s, proveedores }))
   void guardarSnapshot()
+  return id
 }
 
 // ── Parámetros generales ──
@@ -1967,4 +1975,153 @@ export async function cerrarDia(c: CierreStore) {
   })
   if (error) throw error
   actualizarServidor({ existencias: await cargarExistencias() })
+}
+
+// ─── Inventario semanal, mermas y proveedores (30/09) ───────────────────────
+
+/** Movimientos por insumo desde `desde`: inicial + compras − ventas − mermas + ajustes = sistema. */
+export interface RenglonResumenInventario {
+  inicial: number
+  compras: number
+  ventas: number
+  mermas: number
+  otros: number
+  sistema: number
+  costoUnitario: number
+}
+
+export async function resumenInventario(desde: Date): Promise<Record<string, RenglonResumenInventario>> {
+  const { data, error } = await supabase.rpc('resumen_inventario', { p_desde: desde.toISOString() })
+  if (error) throw error
+  const r: Record<string, RenglonResumenInventario> = {}
+  for (const f of (data ?? []) as any[]) {
+    const clave = insumoClavePorId[f.insumo_id]
+    if (!clave) continue
+    r[clave] = { inicial: f.inicial, compras: f.compras, ventas: f.ventas, mermas: f.mermas, otros: f.otros, sistema: f.sistema, costoUnitario: f.costo_unitario }
+  }
+  return r
+}
+
+export interface InventarioGuardado {
+  id: string
+  fecha: string
+  creadoEn: string
+  desde?: string
+  notas?: string
+  valorDiferencia: number
+  valorMermas: number
+  lineas: (RenglonResumenInventario & { insumoClave: string; contado: number; diferencia: number })[]
+}
+
+export async function cargarInventarios(limite = 12): Promise<InventarioGuardado[]> {
+  const { data, error } = await supabase
+    .from('inventarios')
+    .select('*, inventario_lineas(insumo_id, inicial, compras, ventas, mermas, otros, sistema, contado, diferencia, costo_unitario)')
+    .order('creado_en', { ascending: false })
+    .limit(limite)
+  if (error) throw error
+  return (data ?? []).map((i: any) => ({
+    id: i.id,
+    fecha: String(i.fecha).slice(0, 10),
+    creadoEn: i.creado_en,
+    desde: i.desde ?? undefined,
+    notas: i.notas ?? undefined,
+    valorDiferencia: i.valor_diferencia,
+    valorMermas: i.valor_mermas,
+    lineas: (i.inventario_lineas ?? []).map((l: any) => ({
+      insumoClave: insumoClavePorId[l.insumo_id] ?? l.insumo_id,
+      inicial: l.inicial,
+      compras: l.compras,
+      ventas: l.ventas,
+      mermas: l.mermas,
+      otros: l.otros,
+      sistema: l.sistema,
+      contado: l.contado,
+      diferencia: l.diferencia,
+      costoUnitario: l.costo_unitario,
+    })),
+  }))
+}
+
+/** Guarda el conteo semanal: historial + ajuste de cada diferencia en el kárdex (una transacción). */
+export async function guardarInventario(inv: { fecha: string; desde?: Date; notas?: string; lineas: (RenglonResumenInventario & { insumoClave: string; contado: number })[] }) {
+  if (inv.lineas.length === 0) throw new Error('No capturaste ningún conteo')
+  const { data, error } = await supabase.rpc('guardar_inventario', {
+    payload: {
+      fecha: inv.fecha,
+      desde: inv.desde?.toISOString() ?? null,
+      notas: inv.notas?.trim() || null,
+      lineas: inv.lineas.map((l) => ({
+        insumo_id: insumoIdPorClave[l.insumoClave],
+        inicial: l.inicial,
+        compras: l.compras,
+        ventas: l.ventas,
+        mermas: l.mermas,
+        otros: l.otros,
+        sistema: l.sistema,
+        contado: l.contado,
+        costo_unitario: l.costoUnitario,
+      })),
+    },
+  })
+  if (error) throw error
+  actualizarServidor({ existencias: await cargarExistencias() })
+  return data as string
+}
+
+/** Corregir la existencia de un insumo a un valor exacto, con motivo (movimiento tipo 'ajuste'). */
+export async function ajustarExistencia(insumoClave: string, nueva: number, motivo: string) {
+  const { error } = await supabase.rpc('ajustar_existencia', { p_insumo_id: insumoIdPorClave[insumoClave], p_nueva: nueva, p_motivo: motivo })
+  if (error) throw error
+  actualizarServidor({ existencias: await cargarExistencias() })
+}
+
+export interface MermaRegistrada {
+  fecha: string
+  insumoClave: string
+  cantidad: number
+  costo: number
+  motivo: string
+}
+
+/** Mermas registradas en un rango (positivas), con su costo al costo del momento. */
+export async function cargarMermas(desde: Date, hasta: Date): Promise<MermaRegistrada[]> {
+  const filas = await leerPaginado<any>((a, b) =>
+    supabase
+      .from('movimientos_inventario')
+      .select('fecha, insumo_id, cantidad, costo_unitario, nota')
+      .eq('tipo', 'merma')
+      .gte('fecha', desde.toISOString())
+      .lte('fecha', hasta.toISOString())
+      .order('fecha', { ascending: false })
+      .order('id')
+      .range(a, b),
+  )
+  return filas.map((m) => ({
+    fecha: m.fecha,
+    insumoClave: insumoClavePorId[m.insumo_id] ?? m.insumo_id,
+    cantidad: -m.cantidad,
+    costo: -m.cantidad * (m.costo_unitario ?? 0),
+    motivo: m.nota ?? 'Merma',
+  }))
+}
+
+/** Qué insumos surte un proveedor: asigna los elegidos y libera los que ya no. */
+export async function asignarInsumosAProveedor(proveedorId: string, claves: string[]) {
+  const actuales = Object.entries(estado.fichas)
+    .filter(([, f]) => f.proveedorId === proveedorId)
+    .map(([c]) => c)
+  const quitar = actuales.filter((c) => !claves.includes(c)).map((c) => insumoIdPorClave[c])
+  const poner = claves.map((c) => insumoIdPorClave[c]).filter(Boolean)
+  if (quitar.length) {
+    const { error } = await supabase.from('insumos').update({ proveedor_id: null }).in('id', quitar)
+    if (error) throw error
+  }
+  if (poner.length) {
+    const { error } = await supabase.from('insumos').update({ proveedor_id: proveedorId }).in('id', poner)
+    if (error) throw error
+  }
+  const fichas = await cargarFichas()
+  set((s) => ({ ...s, fichas }))
+  void guardarSnapshot()
 }
