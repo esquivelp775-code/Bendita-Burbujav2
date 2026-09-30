@@ -11,6 +11,7 @@ import {
 } from '../../lib/store/remoteStore'
 import type { FormaPago } from '../../lib/supabase/ventas'
 import { useStore } from '../../lib/store/useStore'
+import { mensajeError } from '../../lib/errores'
 
 const ETIQUETA_ESTADO: Record<EstadoEvento, string> = {
   cotizado: 'Cotizado',
@@ -120,7 +121,7 @@ function EditorEvento({ evento, onCerrar }: { evento?: EventoStore; onCerrar: ()
     try {
       return { r: cotizar(lineas, cargoNumero), error: null as string | null }
     } catch (e) {
-      return { r: null, error: e instanceof Error ? e.message : String(e) }
+      return { r: null, error: mensajeError(e) }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(lineas), cargoNumero, config])
@@ -148,7 +149,7 @@ function EditorEvento({ evento, onCerrar }: { evento?: EventoStore; onCerrar: ()
       setMensaje({ ok: true, texto: estadoNuevo === 'confirmado' ? 'Evento confirmado.' : 'Cotización guardada.' })
       if (!evento) onCerrar()
     } catch (e) {
-      setMensaje({ ok: false, texto: e instanceof Error ? e.message : String(e) })
+      setMensaje({ ok: false, texto: mensajeError(e) })
     } finally {
       setGuardando(false)
     }
@@ -437,7 +438,7 @@ function ModalRealizado({ evento, onCerrar, onListo }: { evento: EventoStore; on
               await registrarEventoRealizado(evento.id, { trasladoReal: Number(traslado) || 0, equipoReal: Number(equipo) || 0, horasMontaje: Number(horas) || 0, formaPago })
               onListo()
             } catch (e) {
-              setError(e instanceof Error ? e.message : String(e))
+              setError(mensajeError(e))
             } finally {
               setGuardando(false)
             }

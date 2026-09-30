@@ -11,6 +11,7 @@ import {
   type TurnoStore,
 } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
+import { mensajeError } from '../../lib/errores'
 
 const DIAS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'] // 0 = domingo, igual que Date.getDay()
 const NOMBRE_DIA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
@@ -105,7 +106,7 @@ function EditorTurno({ turno, onListo }: { turno?: TurnoStore; onListo: () => vo
               await guardarTurno(t)
               onListo()
             } catch (e) {
-              setError(e instanceof Error ? e.message : String(e))
+              setError(mensajeError(e))
             } finally {
               setGuardando(false)
             }
@@ -192,7 +193,7 @@ export function SeccionEventos() {
                 if (valor === e[campo]) return
                 guardarEscala({ ...e, [campo]: valor })
                   .then(() => setError(null))
-                  .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                  .catch((err) => setError(mensajeError(err)))
               }}
             />
           ))}
@@ -218,7 +219,7 @@ export function SeccionTamanos({ onActivo }: { onActivo: (nombre: string, v: boo
   const cierres = piezas.filter(
     (i) => enUso.has(i.clave) || (!i.clave.startsWith('vaso_') && !/^(popote|etiqueta|charola|botana|botella)/.test(i.clave)),
   )
-  const guardar = (p: Promise<unknown>) => p.then(() => setError(null)).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  const guardar = (p: Promise<unknown>) => p.then(() => setError(null)).catch((e) => setError(mensajeError(e)))
 
   return (
     <Tarjeta titulo="Tamaños" ayuda="El cierre es lo que se descuenta al tapar cada vaso (tapa + playo, o película de selladora). Si cambias de vaso, cámbialo aquí.">
@@ -308,7 +309,7 @@ function EditorProveedor({ proveedor, onListo }: { proveedor?: ProveedorStore; o
           onClick={() =>
             guardarProveedor(p)
               .then(onListo)
-              .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+              .catch((e) => setError(mensajeError(e)))
           }
         >
           Guardar

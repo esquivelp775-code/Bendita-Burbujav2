@@ -3,6 +3,7 @@ import { activoEnUso } from '../../lib/calculos'
 import { formatoMoneda } from '../../lib/format'
 import { actualizarActivo, altaActivo, type ActivoStore } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
+import { mensajeError } from '../../lib/errores'
 
 const hoyTexto = () => {
   const d = new Date()
@@ -42,7 +43,7 @@ function FormularioActivo({ inicial, textoBoton, onGuardar }: { inicial: Borrado
       await onGuardar({ ...b, nombre: b.nombre.trim(), notas: b.notas?.trim() || undefined })
       setError(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(mensajeError(e))
     } finally {
       setGuardando(false)
     }

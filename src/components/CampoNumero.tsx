@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react'
+import { mensajeError } from '../lib/errores'
 
 interface Props {
   etiqueta: string
@@ -53,7 +54,7 @@ export function CampoNumero({ etiqueta, valor, onGuardar, porcentaje, min, max, 
         await onVaciar()
         setEstado({ tipo: 'guardado' })
       } catch (e) {
-        setEstado({ tipo: 'error', mensaje: e instanceof Error ? e.message : String(e) })
+        setEstado({ tipo: 'error', mensaje: mensajeError(e) })
       }
       return
     }
@@ -71,7 +72,7 @@ export function CampoNumero({ etiqueta, valor, onGuardar, porcentaje, min, max, 
       await onGuardar(porcentaje ? mostrado / 100 : mostrado)
       setEstado({ tipo: 'guardado' })
     } catch (e) {
-      setEstado({ tipo: 'error', mensaje: e instanceof Error ? e.message : String(e) })
+      setEstado({ tipo: 'error', mensaje: mensajeError(e) })
     }
   }
 

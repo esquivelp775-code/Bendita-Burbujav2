@@ -5,6 +5,7 @@
 import type { RegistrarPedidoPayload } from '../supabase/ventas'
 import { cancelarPedido, registrarPedido } from '../supabase/ventas'
 import { db, type PedidoPendiente, type VistaPedidoPendiente } from './db'
+import { mensajeError } from '../errores'
 
 export interface ResumenCola {
   pedidos: PedidoPendiente[]
@@ -100,7 +101,7 @@ export async function sincronizar(): Promise<{ ok: number; error: number }> {
         error++
         await db.pedidosPendientes.update(pendiente.id, {
           intentos: pendiente.intentos + 1,
-          ultimoError: e instanceof Error ? e.message : String(e),
+          ultimoError: mensajeError(e),
         })
       }
     }
@@ -114,7 +115,7 @@ export async function sincronizar(): Promise<{ ok: number; error: number }> {
         const actual = await db.cancelacionesPendientes.get(pedidoId)
         await db.cancelacionesPendientes.update(pedidoId, {
           intentos: (actual?.intentos ?? 0) + 1,
-          ultimoError: e instanceof Error ? e.message : String(e),
+          ultimoError: mensajeError(e),
         })
       }
     }

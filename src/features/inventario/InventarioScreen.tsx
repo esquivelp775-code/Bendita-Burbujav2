@@ -17,6 +17,7 @@ import {
 import { alertasInventario, AVISOS_DE_COMPRA, listaDeCompras, type AvisoInventario } from '../../lib/store/selectors'
 import { useStore } from '../../lib/store/useStore'
 import { guardarPrecarga } from '../compras/precargaCompra'
+import { mensajeError } from '../../lib/errores'
 
 const PRIORIDAD_ORDEN = { alta: 0, media: 1, baja: 2 } as const
 
@@ -189,7 +190,7 @@ function AbiertosYTandas({ onAbrirFicha }: { onAbrirFicha: (clave: string) => vo
               onClick={() =>
                 terminarApertura(a.id)
                   .then(() => setError(null))
-                  .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+                  .catch((e) => setError(mensajeError(e)))
               }
             >
               Se terminó
@@ -207,7 +208,7 @@ function Abrir({ insumoClave, caducaAbiertoDias }: { insumoClave: string; caduca
   const [nota, setNota] = useState('')
   const [mensaje, setMensaje] = useState<string | null>(null)
   const hacer = (p: Promise<unknown>, texto: string) =>
-    p.then(() => setMensaje(texto)).catch((e) => setMensaje(`No se guardó: ${e instanceof Error ? e.message : String(e)}`))
+    p.then(() => setMensaje(texto)).catch((e) => setMensaje(`No se guardó: ${mensajeError(e)}`))
   return (
     <div className="flex flex-col gap-2 border-t border-border pt-3">
       <span className="label-uppercase">Abrir o preparar</span>
@@ -324,7 +325,7 @@ function FichaInsumoModal({ insumoClave, onCerrar }: { insumoClave: string; onCe
                 onChange={(e) =>
                   actualizarInsumo(insumoClave, { proveedorId: e.target.value || null })
                     .then(() => setError(null))
-                    .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                    .catch((err) => setError(mensajeError(err)))
                 }
               >
                 <option value="">Sin proveedor</option>
@@ -397,7 +398,7 @@ function Conteo({ insumoClave, existencia, unidad, onListo }: { insumoClave: str
       await registrarConteoLocal(insumoClave, numero, 'Conteo manual')
       onListo()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(mensajeError(e))
     } finally {
       setGuardando(false)
     }
@@ -433,7 +434,7 @@ function Merma({ insumoClave, unidad, onListo }: { insumoClave: string; unidad?:
       await registrarMerma(insumoClave, numero, detalle.trim() ? `${motivo}: ${detalle.trim()}` : motivo)
       onListo()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(mensajeError(e))
     } finally {
       setGuardando(false)
     }
@@ -480,7 +481,7 @@ function Kardex({ insumoClave, unidad }: { insumoClave: string; unidad?: Insumo[
         setMovimientos((prev) => (pagina === 0 ? m : [...prev, ...m]))
         setHayMas(m.length === TAMANO)
       })
-      .catch((e) => vigente && setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => vigente && setError(mensajeError(e)))
       .finally(() => vigente && setCargando(false))
     return () => {
       vigente = false

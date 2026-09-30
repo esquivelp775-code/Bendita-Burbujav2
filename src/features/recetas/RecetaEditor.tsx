@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Bebida, Insumo, RecetaLinea } from '../../lib/calculos'
 import { formatoCantidad } from '../../lib/format'
 import { guardarPasos, guardarReceta } from '../../lib/store/remoteStore'
+import { mensajeError } from '../../lib/errores'
 
 interface Props {
   bebida: Bebida & { pasos: string[] }
@@ -52,7 +53,7 @@ export function RecetaEditor({ bebida, insumos }: Props) {
       setEditando(false)
       setMensaje({ ok: true, texto: 'Receta guardada. Los márgenes y sugeridos ya usan las cantidades nuevas; las ventas pasadas no cambian.' })
     } catch (e) {
-      setMensaje({ ok: false, texto: e instanceof Error ? e.message : String(e) })
+      setMensaje({ ok: false, texto: mensajeError(e) })
     } finally {
       setGuardando(false)
     }

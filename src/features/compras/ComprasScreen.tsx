@@ -4,6 +4,7 @@ import { formatoCantidad, formatoCostoUnitario, formatoMoneda, formatoPorcentaje
 import { cargarHistorialCompras, registrarCompraCompleta, type CompraHistorial } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
 import { tomarPrecarga } from './precargaCompra'
+import { mensajeError } from '../../lib/errores'
 
 const hoyTexto = () => {
   const d = new Date()
@@ -128,7 +129,7 @@ function NuevaCompra({ onGuardada }: { onGuardada: () => void }) {
       setMensaje({ ok: true, texto: `Compra registrada: ${lineas.length} ${lineas.length === 1 ? 'insumo' : 'insumos'}, ${formatoMoneda(total)}.` })
       onGuardada()
     } catch (e) {
-      setMensaje({ ok: false, texto: e instanceof Error ? e.message : String(e) })
+      setMensaje({ ok: false, texto: mensajeError(e) })
     } finally {
       setGuardando(false)
     }
@@ -263,7 +264,7 @@ function Historial() {
   useEffect(() => {
     cargarHistorialCompras()
       .then(setCompras)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => setError(mensajeError(e)))
   }, [])
   if (error) return <p className="text-sm text-ink-dark">No se pudo leer el historial: {error}</p>
   if (!compras) return <p className="text-sm text-muted">Cargando…</p>

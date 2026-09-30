@@ -11,6 +11,7 @@ import { EquipoScreen } from './features/equipo/EquipoScreen'
 import { AjustesScreen } from './features/ajustes/AjustesScreen'
 import { EventosScreen } from './features/eventos/EventosScreen'
 import { CierreScreen } from './features/cierre/CierreScreen'
+import { ReportesScreen } from './features/reportes/ReportesScreen'
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/ajustes" element={<AjustesScreen />} />
           <Route path="/eventos" element={<EventosScreen />} />
           <Route path="/cierre" element={<CierreScreen />} />
+          <Route path="/reportes" element={<ReportesScreen />} />
           <Route path="*" element={<Navigate to="/hoy" replace />} />
         </Route>
       </Routes>

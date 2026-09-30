@@ -6,7 +6,7 @@ import { sincronizar } from '../../lib/offline/queue'
 import { alertasInventario } from '../../lib/store/selectors'
 import { useStore } from '../../lib/store/useStore'
 
-type Icono = 'hoy' | 'vender' | 'desglose' | 'inventario' | 'compras' | 'recetas' | 'equipo' | 'ajustes' | 'mas' | 'eventos' | 'cierre'
+type Icono = 'hoy' | 'vender' | 'desglose' | 'inventario' | 'compras' | 'recetas' | 'equipo' | 'ajustes' | 'mas' | 'eventos' | 'cierre' | 'reportes'
 
 interface ItemNav {
   to: string
@@ -23,6 +23,7 @@ const NAV_GROUPS: { titulo: string; items: ItemNav[] }[] = [
       { to: '/desglose', label: 'Desglose del día', icono: 'desglose' },
       { to: '/cierre', label: 'Cierre del día', icono: 'cierre' },
       { to: '/eventos', label: 'Eventos', icono: 'eventos' },
+      { to: '/reportes', label: 'Reportes', icono: 'reportes' },
     ],
   },
   {
@@ -60,6 +61,7 @@ const TRAZOS: Record<Icono, string> = {
   mas: 'M5 12h.01 M12 12h.01 M19 12h.01',
   eventos: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z',
   cierre: 'M5 4h14v16H5z M9 9l2 2 4-4 M9 15h6',
+  reportes: 'M4 19h16 M6 16l4-5 3 3 5-7',
 }
 
 function Icono({ nombre }: { nombre: Icono }) {

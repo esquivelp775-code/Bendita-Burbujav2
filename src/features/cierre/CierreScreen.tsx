@@ -5,6 +5,7 @@ import { formatoCantidad, formatoFecha, formatoMoneda } from '../../lib/format'
 import { cargarCierre, cerrarDia, registrarConteoLocal } from '../../lib/store/remoteStore'
 import { listaDeCompras, resumenDia, ventasPorFormaPago } from '../../lib/store/selectors'
 import { useStore } from '../../lib/store/useStore'
+import { mensajeError } from '../../lib/errores'
 
 const aTexto = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const num = (t: string) => Number(t.replace(',', '.'))
@@ -76,7 +77,7 @@ export function CierreScreen() {
       setYaCerrado(true)
       setMensaje({ ok: true, texto: `Día cerrado.${contados.length ? ` ${contados.length} conteos registrados.` : ''}` })
     } catch (e) {
-      setMensaje({ ok: false, texto: e instanceof Error ? e.message : String(e) })
+      setMensaje({ ok: false, texto: mensajeError(e) })
     } finally {
       setGuardando(false)
     }

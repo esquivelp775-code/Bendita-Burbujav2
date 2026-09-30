@@ -8,6 +8,7 @@ import { useStore } from '../../lib/store/useStore'
 import { BebidaPanel } from './BebidaPanel'
 import { guardarCarrito, leerCarrito } from './carritoGuardado'
 import { PedidosHoy } from './PedidosHoy'
+import { mensajeError } from '../../lib/errores'
 
 const CIERRE_POR_INACTIVIDAD_MS = 3 * 60 * 1000
 const DESHACER_MS = 5000
@@ -134,7 +135,7 @@ export function VenderScreen() {
       setTimeout(() => setAviso(null), 3000)
       return true
     } catch (e) {
-      setErrorGuardado(e instanceof Error ? e.message : String(e))
+      setErrorGuardado(mensajeError(e))
       return false
     }
   }

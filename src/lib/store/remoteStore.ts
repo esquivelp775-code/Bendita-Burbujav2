@@ -34,6 +34,7 @@ import { db } from '../offline/db'
 import { configurarCola, encolarCancelacion, encolarPedido, onCambioCola, quitarPendiente, sincronizar, type ResumenCola } from '../offline/queue'
 import { supabase } from '../supabase/client'
 import { leerPaginado } from '../supabase/paginar'
+import type { ResumenRango } from '../reportes'
 import {
   cancelarPedido as rpcCancelarPedido,
   clientePorTelefonoONombre,
@@ -45,6 +46,7 @@ import {
   type RegistrarPedidoPayload,
   type VentaLineaPayload,
 } from '../supabase/ventas'
+import { esErrorDeRed, mensajeError } from '../errores'
 
 export interface CanalStore {
   nombre: string
@@ -854,18 +856,25 @@ export function inicioVentanaVentas(hoy = new Date()): Date {
 }
 
 async function cargarVentas() {
-  const desde = inicioVentanaVentas().toISOString()
-  const pedidosRows = await leerPaginado<any>((a, b) =>
-    supabase.from('pedidos').select('*, clientes(nombre), eventos(nombre)').gte('fecha_hora', desde).order('fecha_hora').order('id').range(a, b),
-  )
-  const lineasRows = await leerPaginado<any>((a, b) =>
-    supabase
-      .from('venta_lineas')
-      .select('*, pedidos!inner(fecha_hora)')
-      .gte('pedidos.fecha_hora', desde)
-      .order('id')
-      .range(a, b),
-  )
+  return leerVentas(inicioVentanaVentas().toISOString())
+}
+
+/** Ventas de cualquier día fuera de la ventana en memoria (Desglose de otra fecha). */
+export async function ventasDeRango(desde: Date, hasta: Date) {
+  return leerVentas(desde.toISOString(), hasta.toISOString())
+}
+
+async function leerVentas(desde: string, hasta?: string) {
+  const pedidosRows = await leerPaginado<any>((a, b) => {
+    let q = supabase.from('pedidos').select('*, clientes(nombre), eventos(nombre)').gte('fecha_hora', desde)
+    if (hasta) q = q.lte('fecha_hora', hasta)
+    return q.order('fecha_hora').order('id').range(a, b)
+  })
+  const lineasRows = await leerPaginado<any>((a, b) => {
+    let q = supabase.from('venta_lineas').select('*, pedidos!inner(fecha_hora)').gte('pedidos.fecha_hora', desde)
+    if (hasta) q = q.lte('pedidos.fecha_hora', hasta)
+    return q.order('id').range(a, b)
+  })
 
   const pedidos: PedidoStore[] = (pedidosRows ?? []).map((p) => ({
     id: p.id,
@@ -990,7 +999,7 @@ export async function cargarTodo(opciones: { enSegundoPlano?: boolean } = {}): P
     void guardarSnapshot()
     void sincronizar()
   } catch (e) {
-    const mensaje = e instanceof Error ? e.message : String(e)
+    const mensaje = mensajeError(e)
     if (opciones.enSegundoPlano) {
       set((s) => ({ ...s, cargando: false, sinConexion: true }))
       return
@@ -1384,7 +1393,7 @@ export async function cancelarPedido(pedidoId: string): Promise<'quitado' | 'can
     await refrescarVentasYExistencias()
     return 'cancelado'
   } catch (e) {
-    const sinRed = !navigator.onLine || (e instanceof Error && /fetch|network|red/i.test(e.message))
+    const sinRed = esErrorDeRed(e)
     if (!sinRed) throw e
     await encolarCancelacion(pedidoId)
     return 'en cola'
@@ -1875,6 +1884,77 @@ export async function cargarCierre(fecha: string): Promise<CierreStore | null> {
         efectivoContado: c.efectivo_contado ?? undefined,
       }
     : null
+}
+
+// ─── Ola 6: reportes, depósitos y exportar ──────────────────────────────────
+
+export async function resumenVentas(desde: string, hasta: string): Promise<ResumenRango> {
+  const { data, error } = await supabase.rpc('resumen_ventas', { p_desde: desde, p_hasta: hasta })
+  if (error) throw error
+  const r = (data ?? {}) as Partial<ResumenRango>
+  const fecha = (d: unknown) => String(d).slice(0, 10)
+  return {
+    lineas: (r.lineas ?? []).map((l) => ({ ...l, dia: fecha(l.dia) })),
+    horas: r.horas ?? [],
+    pedidos: (r.pedidos ?? []).map((p) => ({ ...p, dia: fecha(p.dia) })),
+    eventos: (r.eventos ?? []).map((e) => ({ ...e, dia: fecha(e.dia) })),
+  }
+}
+
+export interface DepositoStore {
+  id: string
+  fecha: string
+  canalNombre: string
+  monto: number
+  periodoDesde?: string
+  periodoHasta?: string
+  notas?: string
+}
+
+export async function cargarDepositos(): Promise<DepositoStore[]> {
+  const { data, error } = await supabase.from('depositos').select('*').order('fecha', { ascending: false }).limit(100)
+  if (error) throw error
+  return (data ?? []).map((d) => ({
+    id: d.id,
+    fecha: String(d.fecha).slice(0, 10),
+    canalNombre: canalNombrePorId[d.canal_id] ?? '',
+    monto: d.monto,
+    periodoDesde: d.periodo_desde ? String(d.periodo_desde).slice(0, 10) : undefined,
+    periodoHasta: d.periodo_hasta ? String(d.periodo_hasta).slice(0, 10) : undefined,
+    notas: d.notas ?? undefined,
+  }))
+}
+
+export async function registrarDeposito(d: Omit<DepositoStore, 'id'>) {
+  if (!(d.monto > 0)) throw new Error('El monto debe ser mayor a 0')
+  if (d.periodoDesde && d.periodoHasta && d.periodoDesde > d.periodoHasta) throw new Error('El periodo está al revés')
+  const { error } = await supabase.from('depositos').insert({
+    fecha: d.fecha,
+    canal_id: canalIdPorNombre[d.canalNombre],
+    monto: d.monto,
+    periodo_desde: d.periodoDesde ?? null,
+    periodo_hasta: d.periodoHasta ?? null,
+    notas: d.notas?.trim() || null,
+  })
+  if (error) throw error
+}
+
+/** Filas de venta de un rango para CSV (paginado: sin límite de 1,000). */
+export async function exportarVentas(desde: string, hasta: string) {
+  const inicio = new Date(`${desde}T00:00:00`).toISOString()
+  const fin = new Date(`${hasta}T23:59:59.999`).toISOString()
+  const { pedidos, ventaLineas } = await leerVentas(inicio, fin)
+  const porId = new Map(pedidos.map((p) => [p.id, p]))
+  return ventaLineas.map((l) => ({ linea: l, pedido: porId.get(l.pedidoId) }))
+}
+
+export async function exportarMovimientos(desde: string, hasta: string) {
+  const inicio = new Date(`${desde}T00:00:00`).toISOString()
+  const fin = new Date(`${hasta}T23:59:59.999`).toISOString()
+  const filas = await leerPaginado<any>((a, b) =>
+    supabase.from('movimientos_inventario').select('fecha, insumo_id, tipo, cantidad, costo_unitario, nota').gte('fecha', inicio).lte('fecha', fin).order('fecha').order('id').range(a, b),
+  )
+  return filas.map((m) => ({ fecha: m.fecha, insumoClave: insumoClavePorId[m.insumo_id] ?? m.insumo_id, tipo: m.tipo, cantidad: m.cantidad, costoUnitario: m.costo_unitario, nota: m.nota ?? '' }))
 }
 
 export async function cerrarDia(c: CierreStore) {

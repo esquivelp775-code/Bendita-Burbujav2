@@ -4,6 +4,7 @@ import { formatoMoneda } from '../../lib/format'
 import { precioAppVigente, precioPublicoVigente, setPrecio } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
 import { RecetaEditor } from './RecetaEditor'
+import { mensajeError } from '../../lib/errores'
 
 const CANAL_PUBLICO = 'Público en general'
 const CANALES_APP = ['Uber Eats', 'Rappi']
@@ -183,7 +184,7 @@ export function RecetasScreen() {
                   <div className="col-span-3 md:col-span-1 flex gap-4 justify-end">
                     <button
                       className="text-xs font-semibold underline"
-                      onClick={() => setPrecio(bebida.nombre, t.nombre, 'app', valorEdicion, true).catch((e) => setError(e instanceof Error ? e.message : String(e)))}
+                      onClick={() => setPrecio(bebida.nombre, t.nombre, 'app', valorEdicion, true).catch((e) => setError(mensajeError(e)))}
                     >
                       Guardar
                     </button>
@@ -195,7 +196,7 @@ export function RecetasScreen() {
                             const { [t.nombre]: _, ...resto } = prev
                             return resto
                           })
-                          setPrecio(bebida.nombre, t.nombre, 'app', sugerido, false).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+                          setPrecio(bebida.nombre, t.nombre, 'app', sugerido, false).catch((e) => setError(mensajeError(e)))
                         }}
                       >
                         Restablecer al sugerido
@@ -254,7 +255,7 @@ export function RecetasScreen() {
                   <span className="text-right text-muted tabular">{sugerido ? formatoMoneda(sugerido.precio) : '—'}</span>
                   <button
                     className="text-xs font-semibold underline justify-self-end"
-                    onClick={() => setPrecio(bebida.nombre, t.nombre, 'publico', valor, true).catch((e) => setError(e instanceof Error ? e.message : String(e)))}
+                    onClick={() => setPrecio(bebida.nombre, t.nombre, 'publico', valor, true).catch((e) => setError(mensajeError(e)))}
                   >
                     Guardar
                   </button>

@@ -3,6 +3,7 @@ import { adicionalAplica, porcionesPosibles, tamanosVendibles, type AdicionalEle
 import { formatoCantidad, formatoMoneda } from '../../lib/format'
 import { calcularDesgloseItem, consumoFisicoDeItem, existenciaInsumo, type ItemBebida } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
+import { mensajeError } from '../../lib/errores'
 
 interface Props {
   bebida: Bebida
@@ -83,7 +84,7 @@ export function BebidaPanel({ bebida, canalNombre, factorEvento, onAgregar, onCe
       desglose = calcularDesgloseItem(canalNombre, item)
       alcance = porcionesPosibles(consumoFisicoDeItem({ ...item, cantidad: 1 }), existenciaInsumo)
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
+      error = mensajeError(e)
     }
   }
 

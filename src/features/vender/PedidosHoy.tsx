@@ -3,6 +3,7 @@ import { formatoMoneda } from '../../lib/format'
 import { cancelarPedido, type ItemCarrito, type PedidoStore, type VentaLineaStore } from '../../lib/store/remoteStore'
 import { finDia, inicioDia } from '../../lib/store/selectors'
 import { useStore } from '../../lib/store/useStore'
+import { mensajeError } from '../../lib/errores'
 
 const ETIQUETA_PAGO: Record<string, string> = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta', plataforma: 'Plataforma' }
 
@@ -72,7 +73,7 @@ export function PedidosHoy({ onRepetir }: Props) {
             : 'Pedido cancelado y su inventario regresó.',
       )
     } catch (e) {
-      setMensaje(`No se pudo cancelar: ${e instanceof Error ? e.message : String(e)}`)
+      setMensaje(`No se pudo cancelar: ${mensajeError(e)}`)
     } finally {
       setTrabajando(false)
       setConfirmar(null)

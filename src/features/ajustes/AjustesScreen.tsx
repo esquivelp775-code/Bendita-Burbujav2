@@ -13,6 +13,7 @@ import {
 } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
 import { SeccionEventos, SeccionParametros, SeccionProveedores, SeccionTamanos, SeccionTurnos } from './AjustesSecciones'
+import { mensajeError } from '../../lib/errores'
 
 function Toggle({ activo, etiqueta, onChange }: { activo: boolean; etiqueta: string; onChange: (v: boolean) => Promise<unknown> }) {
   const [error, setError] = useState<string | null>(null)
@@ -22,7 +23,7 @@ function Toggle({ activo, etiqueta, onChange }: { activo: boolean; etiqueta: str
         onClick={() =>
           onChange(!activo)
             .then(() => setError(null))
-            .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+            .catch((e) => setError(mensajeError(e)))
         }
         className={`w-11 h-6 rounded-full relative transition-colors ${activo ? 'bg-ok' : 'bg-border'}`}
         aria-pressed={activo}
@@ -66,7 +67,7 @@ function TarjetaCuenta() {
             setNueva('')
             setMensaje({ ok: true, texto: 'Contraseña cambiada.' })
           } catch (e) {
-            setMensaje({ ok: false, texto: e instanceof Error ? e.message : String(e) })
+            setMensaje({ ok: false, texto: mensajeError(e) })
           } finally {
             setGuardando(false)
           }
