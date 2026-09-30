@@ -879,6 +879,21 @@ export function evaluarAlertasReorden(estado: EstadoInsumo, parametros: Parametr
   return alertas
 }
 
+/** v3 §2: el aviso ocre salta cuando el costo supera en más de 30 % al de reposición. */
+export const UMBRAL_COMPRA_CARA = 0.3
+
+/** Cuánto más caro (fracción) salió un costo físico neto contra el de reposición; null si no hay referencia. */
+export function sobrecostoVsReposicion(costoFisicoNeto: number, costoReposicion: number | null | undefined): number | null {
+  if (costoReposicion == null || costoReposicion <= 0) return null
+  return costoFisicoNeto / costoReposicion - 1
+}
+
+export function compraSalioCara(costoFisicoNeto: number, costoReposicion: number | null | undefined): boolean {
+  const sobre = sobrecostoVsReposicion(costoFisicoNeto, costoReposicion)
+  // Tolerancia de punto flotante: 1.3 / 1 − 1 = 0.30000000000000004 no debe contar como "más de 30 %".
+  return sobre != null && sobre > UMBRAL_COMPRA_CARA + 1e-9
+}
+
 export interface CantidadSugeridaInput {
   stockObjetivo: number
   existencia: number

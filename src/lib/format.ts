@@ -2,6 +2,12 @@ export function formatoMoneda(x: number): string {
   return x.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
 }
 
+/** Costo por gramo/ml/pieza: con 4 decimales cuando es menor a $1 ($0.1983/g), si no como moneda. */
+export function formatoCostoUnitario(x: number): string {
+  if (Math.abs(x) >= 1) return formatoMoneda(x)
+  return x.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 4, maximumFractionDigits: 4 })
+}
+
 /** "martes, 29 de septiembre" → "Martes, 29 de septiembre": sólo la primera letra en mayúscula. */
 export function formatoFecha(fecha: Date): string {
   const texto = fecha.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })

@@ -116,16 +116,41 @@ export interface ConfigPlataformaStore extends ConfigPlataforma {
   marketing: number
 }
 
+export interface TurnoStore extends Turno {
+  id: string
+  estimado?: boolean
+}
+
+export interface ProveedorStore {
+  id: string
+  nombre: string
+  contacto?: string
+  notas?: string
+}
+
+/** Lo que no entra al motor de cálculo pero sí a Inventario y Compras. */
+export interface FichaInsumo {
+  presentacion?: string
+  /** Unidades útiles por presentación (p. ej. 1000 ml por litro, 50 vasos por paquete). */
+  contenidoUtil: number
+  iva: number
+  costoFisicoNeto: number
+  proveedorId?: string
+  costoReposicion?: number
+  proveedorReposicion?: string
+  ultimaCompra?: { fecha: string; precioPorPresentacion: number; contenidoUtil: number; iva: number; proveedorId?: string }
+}
+
 export interface EstadoStore {
   parametros: Parametros
-  turnos: Turno[]
+  turnos: TurnoStore[]
   canales: CanalStore[]
   configPlataformaPorCanal: Record<string, ConfigPlataformaStore>
   configPublicoPorCanal: Record<string, ConfigPublico>
   insumos: Record<string, Insumo>
   categorias: Record<string, Categoria>
   tamanos: Record<string, Tamano & { activo: boolean }>
-  bebidas: Record<string, Bebida & { activa: boolean }>
+  bebidas: Record<string, Bebida & { activa: boolean; pasos: string[] }>
   leches: Record<string, Leche>
   adicionales: Record<string, Adicional & { activo: boolean }>
   preciosApp: Record<string, Record<string, PrecioManual>>
@@ -135,8 +160,10 @@ export interface EstadoStore {
   existencias: Record<string, ExistenciaStore>
   activos: ActivoStore[]
   botanas: Record<string, Botana & { activa: boolean; descripcion?: string }>
-  escalasEvento: EscalaEvento[]
+  escalasEvento: (EscalaEvento & { id?: string })[]
   configEvento: ConfigEventoStore
+  fichas: Record<string, FichaInsumo>
+  proveedores: ProveedorStore[]
   ultimoCanal?: string
   ultimoTamano?: string
   ultimaLeche?: string
@@ -188,6 +215,8 @@ function estadoVacio(): EstadoStore {
     botanas: {},
     escalasEvento: [],
     configEvento: { minimoBebidas: 30, traslado: 400, equipoHieloDesechables: 300, horasMontaje: 3 },
+    fichas: {},
+    proveedores: [],
     primerUsoCompleto: false,
     cargando: true,
     sinConexion: false,
@@ -208,6 +237,7 @@ let tamanoNombrePorId: Record<string, string> = {}
 let canalIdPorNombre: Record<string, string> = {}
 let canalNombrePorId: Record<string, string> = {}
 let parametrosId: string | undefined
+let configEventoId: string | undefined
 let adicionalIdPorNombre: Record<string, string> = {}
 let lecheIdPorNombre: Record<string, string> = {}
 let categoriaIdPorNombre: Record<string, string> = {}
@@ -220,7 +250,7 @@ function exportarMapas() {
   return {
     insumoIdPorClave, insumoClavePorId, bebidaIdPorNombre, bebidaNombrePorId, tamanoIdPorNombre, tamanoNombrePorId,
     canalIdPorNombre, canalNombrePorId, parametrosId, adicionalIdPorNombre, lecheIdPorNombre, categoriaIdPorNombre,
-    categoriaNombrePorId, botanaIdPorNombre, botanaNombrePorId,
+    categoriaNombrePorId, botanaIdPorNombre, botanaNombrePorId, configEventoId,
   }
 }
 
@@ -228,7 +258,7 @@ function importarMapas(m: ReturnType<typeof exportarMapas>) {
   ;({
     insumoIdPorClave, insumoClavePorId, bebidaIdPorNombre, bebidaNombrePorId, tamanoIdPorNombre, tamanoNombrePorId,
     canalIdPorNombre, canalNombrePorId, parametrosId, adicionalIdPorNombre, lecheIdPorNombre, categoriaIdPorNombre,
-    categoriaNombrePorId, botanaIdPorNombre, botanaNombrePorId,
+    categoriaNombrePorId, botanaIdPorNombre, botanaNombrePorId, configEventoId,
   } = m)
   botanaIdPorNombre ??= {}
   botanaNombrePorId ??= {}
@@ -347,6 +377,45 @@ function set(mutador: (borrador: EstadoStore) => EstadoStore) {
 
 // ─── Carga inicial y refrescos ──────────────────────────────────────────────
 
+async function cargarFichas() {
+  const [{ data: insumosRows, error: e1 }, { data: compras, error: e2 }] = await Promise.all([
+    supabase.from('insumos').select('id, clave, presentacion, contenido_util, iva, costo_fisico_neto, proveedor_id, costo_reposicion, proveedor_reposicion'),
+    supabase.from('ultima_compra_insumo').select('*'),
+  ])
+  if (e1) throw e1
+  if (e2) throw e2
+  const ultimaPorInsumo = new Map((compras ?? []).map((c) => [c.insumo_id, c]))
+  const fichas: Record<string, FichaInsumo> = {}
+  for (const row of insumosRows ?? []) {
+    const u = ultimaPorInsumo.get(row.id)
+    fichas[row.clave] = {
+      presentacion: row.presentacion ?? undefined,
+      contenidoUtil: row.contenido_util,
+      iva: row.iva,
+      costoFisicoNeto: row.costo_fisico_neto,
+      proveedorId: row.proveedor_id ?? undefined,
+      costoReposicion: row.costo_reposicion ?? undefined,
+      proveedorReposicion: row.proveedor_reposicion ?? undefined,
+      ultimaCompra: u
+        ? {
+            fecha: String(u.fecha).slice(0, 10),
+            precioPorPresentacion: u.precio_por_presentacion,
+            contenidoUtil: u.contenido_util_por_presentacion,
+            iva: u.iva,
+            proveedorId: u.proveedor_id ?? undefined,
+          }
+        : undefined,
+    }
+  }
+  return fichas
+}
+
+async function cargarProveedores(): Promise<ProveedorStore[]> {
+  const { data, error } = await supabase.from('proveedores').select('*').order('nombre')
+  if (error) throw error
+  return (data ?? []).map((p) => ({ id: p.id, nombre: p.nombre, contacto: p.contacto ?? undefined, notas: p.notas ?? undefined }))
+}
+
 async function cargarInsumos() {
   const { data, error } = await supabase.from('insumos').select('*')
   if (error) throw error
@@ -414,12 +483,14 @@ async function cargarTamanos() {
 }
 
 async function cargarBebidas() {
-  const [{ data: bebidasRows, error: e1 }, { data: recetaRows, error: e2 }] = await Promise.all([
+  const [{ data: bebidasRows, error: e1 }, { data: recetaRows, error: e2 }, { data: pasosRows, error: e3 }] = await Promise.all([
     supabase.from('bebidas').select('*').order('orden'),
-    supabase.from('receta_lineas').select('*'),
+    supabase.from('receta_lineas').select('*').order('creado_en').order('id'),
+    supabase.from('receta_pasos').select('*').order('orden'),
   ])
   if (e1) throw e1
   if (e2) throw e2
+  if (e3) throw e3
 
   const bebidas: EstadoStore['bebidas'] = {}
   bebidaIdPorNombre = {}
@@ -431,9 +502,14 @@ async function cargarBebidas() {
       llevaLeche: row.lleva_leche,
       activa: row.activa,
       receta: [],
+      pasos: [],
     }
     bebidaIdPorNombre[row.nombre] = row.id
     bebidaNombrePorId[row.id] = row.nombre
+  }
+  for (const p of pasosRows ?? []) {
+    const nombre = bebidaNombrePorId[p.bebida_id]
+    if (nombre) bebidas[nombre].pasos.push(p.texto)
   }
   for (const r of recetaRows ?? []) {
     const nombre = bebidaNombrePorId[r.bebida_id]
@@ -607,10 +683,20 @@ async function cargarParametros(): Promise<Parametros> {
   }
 }
 
-async function cargarTurnos(): Promise<Turno[]> {
-  const { data, error } = await supabase.from('turnos').select('*').eq('activo', true)
+async function cargarTurnos(): Promise<TurnoStore[]> {
+  // Todos (también inactivos) para poder editarlos en Ajustes; tarifaManoDeObra ignora los inactivos.
+  const { data, error } = await supabase.from('turnos').select('*').order('nombre')
   if (error) throw error
-  return (data ?? []).map((t) => ({ nombre: t.nombre, dias: t.dias, inicio: t.inicio, fin: t.fin, horaManoDeObra: t.hora_mano_obra, activo: t.activo }))
+  return (data ?? []).map((t) => ({
+    id: t.id,
+    nombre: t.nombre,
+    dias: t.dias,
+    inicio: String(t.inicio).slice(0, 5),
+    fin: String(t.fin).slice(0, 5),
+    horaManoDeObra: t.hora_mano_obra,
+    activo: t.activo,
+    estimado: t.estimado ?? false,
+  }))
 }
 
 async function cargarActivos(): Promise<ActivoStore[]> {
@@ -659,7 +745,8 @@ async function cargarEvento() {
   ])
   if (e1) throw e1
   if (e2) throw e2
-  const escalasEvento: EscalaEvento[] = (escalasRows ?? []).map((e) => ({ desde: e.desde, hasta: e.hasta, factor: e.factor, cargoServicio: e.cargo_servicio }))
+  const escalasEvento: EstadoStore['escalasEvento'] = (escalasRows ?? []).map((e) => ({ id: e.id, desde: e.desde, hasta: e.hasta, factor: e.factor, cargoServicio: e.cargo_servicio }))
+  configEventoId = configRows?.[0]?.id
   const c = configRows?.[0]
   const configEvento: ConfigEventoStore = c
     ? { minimoBebidas: c.minimo_bebidas, traslado: c.traslado, equipoHieloDesechables: c.equipo_hielo_desechables, horasMontaje: c.horas_montaje }
@@ -777,6 +864,7 @@ export async function cargarTodo(opciones: { enSegundoPlano?: boolean } = {}): P
     const activos = await cargarActivos()
     const botanas = await cargarBotanas()
     const { escalasEvento, configEvento } = await cargarEvento()
+    const [fichas, proveedores] = await Promise.all([cargarFichas(), cargarProveedores()])
     const { pedidos, ventaLineas } = await cargarVentas()
     const existencias = await cargarExistencias()
 
@@ -801,6 +889,8 @@ export async function cargarTodo(opciones: { enSegundoPlano?: boolean } = {}): P
         botanas,
         escalasEvento,
         configEvento,
+        fichas,
+        proveedores,
         primerUsoCompleto: true,
         cargando: false,
         error: undefined,
@@ -1178,22 +1268,6 @@ export async function cancelarPedido(pedidoId: string): Promise<'quitado' | 'can
 
 // ─── Acciones — Inventario ──────────────────────────────────────────────
 
-export async function registrarCompraLocal(insumoClave: string, presentaciones: number, contenidoUtilPorPresentacion: number, precioPorPresentacion: number, iva?: number) {
-  await rpcRegistrarCompra({
-    lineas: [
-      {
-        insumo_id: insumoIdPorClave[insumoClave],
-        presentaciones,
-        contenido_util_por_presentacion: contenidoUtilPorPresentacion,
-        precio_por_presentacion: precioPorPresentacion,
-        iva,
-      },
-    ],
-  })
-  const insumos = await cargarInsumos()
-  set((s) => ({ ...s, insumos }))
-  actualizarServidor({ existencias: await cargarExistencias() })
-}
 
 /** Objetivo manual del insumo; null regresa al automático (máxima existencia tras compras de 60 días). */
 export async function setStockObjetivo(insumoClave: string, stockObjetivo: number | null) {
@@ -1253,5 +1327,233 @@ export async function actualizarActivo(id: string, cambios: Partial<Omit<ActivoS
   const { error } = await supabase.from('activos').update(patch).eq('id', id)
   if (error) throw error
   set((s) => ({ ...s, activos: s.activos.map((a) => (a.id === id ? { ...a, ...cambios } : a)) }))
+  void guardarSnapshot()
+}
+
+// ─── Ola 4: inventario, compras, recetas y ajustes ─────────────────────────
+
+export interface MovimientoKardex {
+  fecha: string
+  tipo: string
+  cantidad: number
+  nota?: string
+}
+
+/** Kárdex de un insumo, del más reciente al más viejo, por páginas (nunca el historial completo). */
+export async function cargarKardex(insumoClave: string, pagina: number, tamano = 50): Promise<MovimientoKardex[]> {
+  const desde = pagina * tamano
+  const { data, error } = await supabase
+    .from('movimientos_inventario')
+    .select('fecha, tipo, cantidad, nota')
+    .eq('insumo_id', insumoIdPorClave[insumoClave])
+    .order('fecha', { ascending: false })
+    .order('id', { ascending: false })
+    .range(desde, desde + tamano - 1)
+  if (error) throw error
+  return (data ?? []).map((m) => ({ fecha: m.fecha, tipo: m.tipo, cantidad: m.cantidad, nota: m.nota ?? undefined }))
+}
+
+export async function registrarMerma(insumoClave: string, cantidad: number, motivo: string) {
+  const { error } = await supabase.rpc('registrar_merma', { p_insumo_id: insumoIdPorClave[insumoClave], p_cantidad: cantidad, p_motivo: motivo })
+  if (error) throw error
+  actualizarServidor({ existencias: await cargarExistencias() })
+}
+
+async function refrescarInsumosYFichas() {
+  const [insumos, fichas] = await Promise.all([cargarInsumos(), cargarFichas()])
+  set((s) => ({ ...s, insumos, fichas }))
+  actualizarServidor({ existencias: await cargarExistencias() })
+  void guardarSnapshot()
+}
+
+/** Ficha del insumo: proveedor, caducidad al abrir, costo de reposición. */
+export async function actualizarInsumo(
+  insumoClave: string,
+  cambios: { proveedorId?: string | null; caducaAbiertoDias?: number | null; costoReposicion?: number | null; proveedorReposicion?: string | null; umbralReorden?: number | null },
+) {
+  const patch: Record<string, unknown> = {}
+  if ('proveedorId' in cambios) patch.proveedor_id = cambios.proveedorId ?? null
+  if ('caducaAbiertoDias' in cambios) patch.caduca_abierto_dias = cambios.caducaAbiertoDias ?? null
+  if ('costoReposicion' in cambios) patch.costo_reposicion = cambios.costoReposicion ?? null
+  if ('proveedorReposicion' in cambios) patch.proveedor_reposicion = cambios.proveedorReposicion ?? null
+  if ('umbralReorden' in cambios) patch.umbral_reorden = cambios.umbralReorden ?? null
+  const { error } = await supabase.from('insumos').update(patch).eq('id', insumoIdPorClave[insumoClave])
+  if (error) throw error
+  await refrescarInsumosYFichas()
+}
+
+export interface LineaCompraInput {
+  insumoClave: string
+  presentaciones: number
+  contenidoUtilPorPresentacion: number
+  precioPorPresentacion: number
+  iva: number
+}
+
+/** Una compra (ticket) con varias líneas; registrar_compra recalcula el promedio ponderado de cada insumo. */
+export async function registrarCompraCompleta(compra: { fecha: string; proveedorId?: string; conFactura: boolean; notas?: string; lineas: LineaCompraInput[] }) {
+  if (compra.lineas.length === 0) throw new Error('Agrega al menos un insumo')
+  await rpcRegistrarCompra({
+    fecha: compra.fecha,
+    proveedor_id: compra.proveedorId ?? null,
+    con_factura: compra.conFactura,
+    notas: compra.notas ?? null,
+    lineas: compra.lineas.map((l) => ({
+      insumo_id: insumoIdPorClave[l.insumoClave],
+      presentaciones: l.presentaciones,
+      contenido_util_por_presentacion: l.contenidoUtilPorPresentacion,
+      precio_por_presentacion: l.precioPorPresentacion,
+      iva: l.iva,
+    })),
+  })
+  await refrescarInsumosYFichas()
+}
+
+export interface CompraHistorial {
+  id: string
+  fecha: string
+  proveedor?: string
+  conFactura: boolean
+  notas?: string
+  lineas: { insumoClave: string; presentaciones: number; contenidoUtil: number; precio: number; iva: number }[]
+}
+
+export async function cargarHistorialCompras(limite = 30): Promise<CompraHistorial[]> {
+  const { data, error } = await supabase
+    .from('compras')
+    .select('id, fecha, con_factura, notas, proveedores(nombre), compra_lineas(insumo_id, presentaciones, contenido_util_por_presentacion, precio_por_presentacion, iva)')
+    .order('fecha', { ascending: false })
+    .order('creado_en', { ascending: false })
+    .limit(limite)
+  if (error) throw error
+  return (data ?? []).map((c: any) => ({
+    id: c.id,
+    fecha: String(c.fecha).slice(0, 10),
+    proveedor: c.proveedores?.nombre ?? undefined,
+    conFactura: c.con_factura,
+    notas: c.notas ?? undefined,
+    lineas: (c.compra_lineas ?? []).map((l: any) => ({
+      insumoClave: insumoClavePorId[l.insumo_id],
+      presentaciones: l.presentaciones,
+      contenidoUtil: l.contenido_util_por_presentacion,
+      precio: l.precio_por_presentacion,
+      iva: l.iva,
+    })),
+  }))
+}
+
+/** Reemplaza la receta completa de una bebida. Las ventas guardadas no cambian (su costo es una foto). */
+export async function guardarReceta(bebidaNombre: string, receta: Bebida['receta']) {
+  const { error } = await supabase.rpc('guardar_receta', {
+    p_bebida_id: bebidaIdPorNombre[bebidaNombre],
+    p_lineas: receta.map((l) => ({ insumo_id: insumoIdPorClave[l.insumoClave], cantidad: l.cantidad, escala_con_tamano: l.escalaConTamano, es_leche: l.esLeche })),
+  })
+  if (error) throw error
+  set((s) => ({ ...s, bebidas: { ...s.bebidas, [bebidaNombre]: { ...s.bebidas[bebidaNombre], receta } } }))
+  void guardarSnapshot()
+}
+
+export async function guardarPasos(bebidaNombre: string, pasos: string[]) {
+  const limpios = pasos.map((p) => p.trim()).filter(Boolean)
+  const { error } = await supabase.rpc('guardar_pasos', { p_bebida_id: bebidaIdPorNombre[bebidaNombre], p_pasos: limpios })
+  if (error) throw error
+  set((s) => ({ ...s, bebidas: { ...s.bebidas, [bebidaNombre]: { ...s.bebidas[bebidaNombre], pasos: limpios } } }))
+  void guardarSnapshot()
+}
+
+// ── Proveedores ──
+export async function guardarProveedor(p: Omit<ProveedorStore, 'id'> & { id?: string }) {
+  const fila = { nombre: p.nombre.trim(), contacto: p.contacto?.trim() || null, notas: p.notas?.trim() || null }
+  if (!fila.nombre) throw new Error('Ponle nombre al proveedor')
+  const { error } = p.id ? await supabase.from('proveedores').update(fila).eq('id', p.id) : await supabase.from('proveedores').insert(fila)
+  if (error) throw error
+  const proveedores = await cargarProveedores()
+  set((s) => ({ ...s, proveedores }))
+  void guardarSnapshot()
+}
+
+// ── Parámetros generales ──
+type CambiosParametros = Partial<Pick<Parametros, 'ivaVenta' | 'indirectosPorBebida' | 'horaManoDeObraFueraDeTurno' | 'metaUtilidadSemanal' | 'mermaDefault'>> & {
+  umbralAlta?: number
+  umbralMedia?: number
+  umbralBaja?: number
+}
+
+export async function actualizarParametros(cambios: CambiosParametros) {
+  const columnas: Record<keyof CambiosParametros, string> = {
+    ivaVenta: 'iva_venta',
+    indirectosPorBebida: 'indirectos_por_bebida',
+    horaManoDeObraFueraDeTurno: 'hora_mano_obra_fuera_turno',
+    metaUtilidadSemanal: 'meta_utilidad_semanal',
+    mermaDefault: 'merma_default',
+    umbralAlta: 'umbral_alta',
+    umbralMedia: 'umbral_media',
+    umbralBaja: 'umbral_baja',
+  }
+  const patch: Record<string, number> = {}
+  for (const [k, v] of Object.entries(cambios) as [keyof CambiosParametros, number | undefined][]) if (v != null) patch[columnas[k]] = v
+  const { error } = await supabase.from('parametros').update(patch).eq('id', parametrosId)
+  if (error) throw error
+  set((s) => {
+    const { umbralAlta, umbralMedia, umbralBaja, ...resto } = cambios
+    const umbrales = { ...s.parametros.umbralReordenPorPrioridad }
+    if (umbralAlta != null) umbrales.alta = umbralAlta
+    if (umbralMedia != null) umbrales.media = umbralMedia
+    if (umbralBaja != null) umbrales.baja = umbralBaja
+    return { ...s, parametros: { ...s.parametros, ...resto, umbralReordenPorPrioridad: umbrales } }
+  })
+  void guardarSnapshot()
+}
+
+// ── Turnos ──
+export async function guardarTurno(t: Omit<TurnoStore, 'id'> & { id?: string }) {
+  if (!t.nombre.trim()) throw new Error('Ponle nombre al turno')
+  if (t.dias.length === 0) throw new Error('Elige al menos un día')
+  if (!(t.inicio < t.fin)) throw new Error('La hora de inicio debe ser antes que la de fin')
+  const fila = { nombre: t.nombre.trim(), dias: t.dias, inicio: t.inicio, fin: t.fin, hora_mano_obra: t.horaManoDeObra, activo: t.activo ?? true, estimado: t.estimado ?? false }
+  const { error } = t.id ? await supabase.from('turnos').update(fila).eq('id', t.id) : await supabase.from('turnos').insert(fila)
+  if (error) throw error
+  const turnos = await cargarTurnos()
+  set((s) => ({ ...s, turnos }))
+  void guardarSnapshot()
+}
+
+// ── Eventos: escalas y costos fijos ──
+export async function guardarEscala(e: EscalaEvento & { id?: string }) {
+  const fila = { desde: e.desde, hasta: e.hasta, factor: e.factor, cargo_servicio: e.cargoServicio }
+  const { error } = e.id ? await supabase.from('evento_escalas').update(fila).eq('id', e.id) : await supabase.from('evento_escalas').insert(fila)
+  if (error) throw error
+  const { escalasEvento, configEvento } = await cargarEvento()
+  set((s) => ({ ...s, escalasEvento, configEvento }))
+  void guardarSnapshot()
+}
+
+export async function actualizarConfigEvento(cambios: Partial<ConfigEventoStore>) {
+  const columnas: Record<keyof ConfigEventoStore, string> = {
+    minimoBebidas: 'minimo_bebidas',
+    traslado: 'traslado',
+    equipoHieloDesechables: 'equipo_hielo_desechables',
+    horasMontaje: 'horas_montaje',
+  }
+  const patch: Record<string, number> = {}
+  for (const [k, v] of Object.entries(cambios) as [keyof ConfigEventoStore, number | undefined][]) if (v != null) patch[columnas[k]] = v
+  const { error } = await supabase.from('config_evento').update(patch).eq('id', configEventoId)
+  if (error) throw error
+  set((s) => ({ ...s, configEvento: { ...s.configEvento, ...cambios } }))
+  void guardarSnapshot()
+}
+
+// ── Tamaños: vaso, cierre y canales (v3: cambiar el cierre del 16 oz sin tocar código) ──
+export async function actualizarTamano(nombre: string, cambios: { vasoInsumoClave?: string; cierreInsumoClaves?: string[]; canales?: string[] }) {
+  const patch: Record<string, unknown> = {}
+  if (cambios.vasoInsumoClave) patch.insumo_vaso_id = insumoIdPorClave[cambios.vasoInsumoClave]
+  if (cambios.cierreInsumoClaves) patch.insumo_cierre_ids = cambios.cierreInsumoClaves.map((c) => insumoIdPorClave[c])
+  if (cambios.canales) {
+    if (cambios.canales.length === 0) throw new Error('El tamaño debe venderse en al menos un canal')
+    patch.canales = cambios.canales
+  }
+  const { error } = await supabase.from('tamanos').update(patch).eq('id', tamanoIdPorNombre[nombre])
+  if (error) throw error
+  set((s) => ({ ...s, tamanos: { ...s.tamanos, [nombre]: { ...s.tamanos[nombre], ...cambios } } }))
   void guardarSnapshot()
 }

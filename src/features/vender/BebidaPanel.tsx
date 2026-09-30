@@ -30,6 +30,7 @@ export function BebidaPanel({ bebida, canalNombre, factorEvento, onAgregar, onCe
   const adicionalesCatalogo = useStore((s) => s.adicionales)
   const ultimoTamano = useStore((s) => s.ultimoTamano)
   const ultimaLeche = useStore((s) => s.ultimaLeche)
+  const pasos = useStore((s) => s.bebidas[bebida.nombre]?.pasos ?? [])
 
   const [tamanoNombre, setTamanoNombre] = useState(() => tamanos.find((t) => t.nombre === ultimoTamano)?.nombre ?? tamanos[0]?.nombre)
   const lecheDefault = leches.find((l) => l.nombre === ultimaLeche) ?? leches.find((l) => l.esDefault)
@@ -197,6 +198,29 @@ export function BebidaPanel({ bebida, canalNombre, factorEvento, onAgregar, onCe
             ))}
             <div className="text-xs mt-1">Puedes vender igual; revisa tu inventario (compra o conteo).</div>
           </div>
+        )}
+
+        {desglose && !error && (
+          <details className="text-sm border border-border rounded bg-surface">
+            <summary className="px-3 py-2 cursor-pointer font-semibold">Ver preparación ({tamano?.nombre})</summary>
+            <div className="px-3 pb-3 flex flex-col gap-2">
+              <ul className="m-0 p-0 list-none flex flex-col gap-0.5">
+                {desglose.consumo.map((c, i) => (
+                  <li key={i} className="flex justify-between gap-3">
+                    <span>{insumos[c.insumoClave]?.nombre ?? c.insumoClave}</span>
+                    <span className="tabular text-muted">{formatoCantidad(c.cantidad, insumos[c.insumoClave]?.unidad)}</span>
+                  </li>
+                ))}
+              </ul>
+              {pasos.length > 0 && (
+                <ol className="m-0 pl-5 flex flex-col gap-1">
+                  {pasos.map((p, i) => (
+                    <li key={i}>{p}</li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </details>
         )}
 
         {desglose && !error && (

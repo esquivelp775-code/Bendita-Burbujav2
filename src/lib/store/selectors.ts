@@ -1,5 +1,6 @@
 import {
   activoEnUso,
+  cantidadSugeridaCompra,
   desgloseDelDia,
   evaluarAlertasReorden,
   generaAvisoCompra,
@@ -159,7 +160,62 @@ export function tamanosSinVasos(s: EstadoStore): string[] {
   return [...agotados]
 }
 
-export type TipoAviso = 'sin vasos' | 'agotado' | 'reorden' | 'cobertura'
+export interface RenglonCompra {
+  insumoClave: string
+  nombre: string
+  tipo: TipoAviso
+  /** Presentaciones a comprar (bolsas, litros, paquetes) para volver al objetivo; 1 si no hay objetivo. */
+  presentaciones: number
+  contenidoUtil: number
+  presentacion?: string
+  /** Con IVA, al último precio pagado; null si nunca se ha comprado. */
+  costoEstimado: number | null
+}
+
+export interface GrupoCompra {
+  proveedorId?: string
+  proveedor: string
+  renglones: RenglonCompra[]
+  total: number
+}
+
+/**
+ * Lista de compras (spec §5.10): por insumo con aviso, cantidad sugerida en presentaciones y costo
+ * estimado con el último precio, agrupada por proveedor. "Sin proveedor" va al final.
+ */
+export function listaDeCompras(s: EstadoStore): GrupoCompra[] {
+  const grupos = new Map<string, GrupoCompra>()
+  for (const aviso of alertasInventario(s)) {
+    if (aviso.tipo === 'sin vasos') continue
+    const ficha = s.fichas[aviso.insumoClave]
+    const objetivo = s.existencias[aviso.insumoClave]?.stockObjetivoEfectivo ?? null
+    const contenidoUtil = ficha?.ultimaCompra?.contenidoUtil || ficha?.contenidoUtil || 1
+    const presentaciones =
+      objetivo != null
+        ? Math.max(1, cantidadSugeridaCompra({ stockObjetivo: objetivo, existencia: Math.max(0, aviso.existencia), contenidoUtilPorPresentacion: contenidoUtil }))
+        : 1
+    const precio = ficha?.ultimaCompra?.precioPorPresentacion
+    const proveedorId = ficha?.proveedorId
+    const proveedor = s.proveedores.find((p) => p.id === proveedorId)?.nombre ?? 'Sin proveedor'
+    const clave = proveedorId ?? '—'
+    const grupo = grupos.get(clave) ?? { proveedorId, proveedor, renglones: [], total: 0 }
+    const costoEstimado = precio != null ? presentaciones * precio : null
+    grupo.renglones.push({
+      insumoClave: aviso.insumoClave,
+      nombre: aviso.nombre,
+      tipo: aviso.tipo,
+      presentaciones,
+      contenidoUtil,
+      presentacion: ficha?.presentacion,
+      costoEstimado,
+    })
+    grupo.total += costoEstimado ?? 0
+    grupos.set(clave, grupo)
+  }
+  return [...grupos.values()].sort((a, b) => (a.proveedorId ? 0 : 1) - (b.proveedorId ? 0 : 1) || a.proveedor.localeCompare(b.proveedor))
+}
+
+export type TipoAviso ='sin vasos' | 'agotado' | 'reorden' | 'cobertura'
 
 export interface AvisoInventario {
   insumoClave: string

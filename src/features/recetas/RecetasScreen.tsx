@@ -3,6 +3,7 @@ import { desgloseLinea, margenEnRango, margenSobrePrecio, precioSugerido, precio
 import { formatoMoneda } from '../../lib/format'
 import { precioAppVigente, precioPublicoVigente, setPrecio } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
+import { RecetaEditor } from './RecetaEditor'
 
 const CANAL_PUBLICO = 'Público en general'
 const CANALES_APP = ['Uber Eats', 'Rappi']
@@ -76,6 +77,32 @@ export function RecetasScreen() {
     }
   }
 
+  /** Utilidad en Uber Eats a un precio dado, costeada a $50/h como el sugerido (spec §5.9). */
+  function utilidadApp(tamanoNombre: string, precio: number): number | null {
+    if (!bebida || !configUber) return null
+    try {
+      return desgloseLinea({
+        fechaHora: new Date(),
+        canalTipo: 'plataforma',
+        canalNombre: 'Uber Eats',
+        bebida,
+        tamano: tamanos.find((t) => t.nombre === tamanoNombre)!,
+        lecheElegida: lecheDefault,
+        adicionalesElegidos: [],
+        precioApp: precio,
+        insumos,
+        adicionalesCatalogo: adicionales,
+        categorias,
+        parametros,
+        turnos,
+        configPlataforma: configUber,
+        fueraDeTurno: true,
+      }).utilidad
+    } catch {
+      return null
+    }
+  }
+
   const sugeridos = bebida
     ? precioSugerido({
         bebida,
@@ -126,10 +153,22 @@ export function RecetasScreen() {
               <span className="text-right">Sugerido</span>
               <span className="hidden md:block"></span>
             </div>
-            {tamanosApp.map((t) => {
+            {tamanosApp.map((t, idx) => {
               const vigente = precioAppVigente(bebida.nombre, t.nombre)
               const sugerido = sugeridos[t.nombre]
               const valorEdicion = edicion[t.nombre] ?? vigente
+              const utilidad = utilidadApp(t.nombre, valorEdicion)
+              const objetivo = categorias[bebida.categoriaNombre]?.utilidadObjetivo
+              const anterior = idx > 0 ? tamanosApp[idx - 1] : null
+              const utilidadAnterior = anterior ? utilidadApp(anterior.nombre, edicion[anterior.nombre] ?? precioAppVigente(bebida.nombre, anterior.nombre)) : null
+              const esManual = preciosApp[bebida.nombre]?.[t.nombre]?.manual
+              const avisos: string[] = []
+              if (utilidad != null && objetivo != null && utilidad < objetivo)
+                avisos.push(`En Uber deja ${formatoMoneda(utilidad)}, menos que el objetivo de ${bebida.categoriaNombre} (${formatoMoneda(objetivo)}).`)
+              if (esManual && sugerido != null && sugerido > valorEdicion && utilidad != null)
+                avisos.push(`El sugerido subió a ${formatoMoneda(sugerido)}; tu precio deja ${formatoMoneda(utilidad)}.`)
+              if (utilidad != null && utilidadAnterior != null && utilidad < utilidadAnterior)
+                avisos.push(`El ${t.nombre} deja menos que el ${anterior!.nombre} (${formatoMoneda(utilidad)} contra ${formatoMoneda(utilidadAnterior)}).`)
               return (
                 <div key={t.nombre} className="grid grid-cols-[3.5rem_5.5rem_1fr] md:grid-cols-4 gap-2 items-center py-2 border-b border-border text-sm">
                   <span>{t.nombre}</span>
@@ -151,12 +190,29 @@ export function RecetasScreen() {
                     {sugerido != null && (
                       <button
                         className="text-xs text-muted underline"
-                        onClick={() => setPrecio(bebida.nombre, t.nombre, 'app', sugerido, false).catch((e) => setError(e instanceof Error ? e.message : String(e)))}
+                        onClick={() => {
+                          setEdicion((prev) => {
+                            const { [t.nombre]: _, ...resto } = prev
+                            return resto
+                          })
+                          setPrecio(bebida.nombre, t.nombre, 'app', sugerido, false).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+                        }}
                       >
-                        Usar sugerido
+                        Restablecer al sugerido
                       </button>
                     )}
                   </div>
+                  {utilidad != null && (
+                    <span className="col-span-3 md:col-span-4 text-xs text-muted -mt-1">
+                      En Uber deja {formatoMoneda(utilidad)}
+                      {esManual === false && ' · precio sugerido'}
+                    </span>
+                  )}
+                  {avisos.map((a) => (
+                    <span key={a} className="col-span-3 md:col-span-4 text-xs text-warn">
+                      {a}
+                    </span>
+                  ))}
                 </div>
               )
             })}
@@ -207,21 +263,7 @@ export function RecetasScreen() {
             })}
           </div>
 
-          <div className="border border-border rounded p-4 bg-surface">
-            <h3 className="text-sm label-uppercase mb-2">Receta</h3>
-            <ul className="text-sm flex flex-col gap-1">
-              {bebida.receta.map((r, idx) => (
-                <li key={idx} className="flex justify-between">
-                  <span>{insumos[r.insumoClave]?.nombre ?? r.insumoClave}</span>
-                  <span className="text-muted tabular">
-                    {r.cantidad}
-                    {insumos[r.insumoClave]?.categoria === 'empaque' ? ' pza' : ''}
-                    {r.escalaConTamano ? ' (escala con tamaño)' : ''}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <RecetaEditor bebida={bebida} insumos={insumos} />
         </div>
       )}
     </div>

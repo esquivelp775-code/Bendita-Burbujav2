@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { comisionEfectivaDe, type Insumo } from '../calculos'
+import { comisionEfectivaDe, compraSalioCara, sobrecostoVsReposicion, type Insumo } from '../calculos'
 import type { EstadoStore, ExistenciaStore } from './remoteStore'
-import { alertasInventario } from './selectors'
+import { alertasInventario, listaDeCompras } from './selectors'
 
 function insumo(clave: string, extra: Partial<Insumo> = {}): Insumo {
   return { clave, nombre: clave, categoria: 'insumo', costoUnitarioNeto: 1, merma: 0, prioridad: 'media', ...extra }
@@ -43,6 +43,8 @@ function estado(insumos: Insumo[], existencias: Record<string, Partial<Existenci
     botanas: {},
     escalasEvento: [],
     configEvento: { minimoBebidas: 30, traslado: 400, equipoHieloDesechables: 300, horasMontaje: 3 },
+    fichas: {},
+    proveedores: [],
     primerUsoCompleto: true,
     cargando: false,
     sinConexion: false,
@@ -88,6 +90,45 @@ describe('alertasInventario — una sola fuente para Hoy, Inventario y la caja',
       }),
     )
     expect(avisos.map((a) => a.insumoClave)).toEqual(['cafe', 'azucar', 'tapioca'])
+  })
+})
+
+describe('listaDeCompras — por proveedor, en presentaciones, con costo estimado', () => {
+  it('agrupa por proveedor, calcula presentaciones hacia el objetivo y costo con el último precio', () => {
+    const s = estado([insumo('tapioca', { prioridad: 'alta', nombre: 'Tapioca' }), insumo('leche', { prioridad: 'alta', nombre: 'Leche' }), insumo('hielo', { nombre: 'Hielo' })], {
+      tapioca: { existencia: 100, stockObjetivoEfectivo: 600 },
+      leche: { existencia: 0 },
+      hielo: { existencia: 0 },
+    })
+    s.proveedores = [
+      { id: 'p1', nombre: 'Ziaba Gourmet' },
+      { id: 'p2', nombre: 'Walmart' },
+    ]
+    s.fichas = {
+      tapioca: { contenidoUtil: 600, iva: 0, costoFisicoNeto: 0.19, proveedorId: 'p1', ultimaCompra: { fecha: '2026-09-28', precioPorPresentacion: 119, contenidoUtil: 600, iva: 0 } },
+      leche: { contenidoUtil: 1000, iva: 0, costoFisicoNeto: 0.025, proveedorId: 'p2' },
+      hielo: { contenidoUtil: 5000, iva: 0, costoFisicoNeto: 0.001 },
+    }
+    const grupos = listaDeCompras(s)
+    expect(grupos.map((g) => g.proveedor)).toEqual(['Walmart', 'Ziaba Gourmet', 'Sin proveedor'])
+    const ziaba = grupos.find((g) => g.proveedor === 'Ziaba Gourmet')!
+    // faltan 500 g → 1 bolsa de 600 g, a $119
+    expect(ziaba.renglones[0]).toMatchObject({ insumoClave: 'tapioca', presentaciones: 1, costoEstimado: 119 })
+    expect(ziaba.total).toBe(119)
+    // sin objetivo ni compra previa: 1 presentación, costo desconocido
+    expect(grupos.find((g) => g.proveedor === 'Walmart')!.renglones[0]).toMatchObject({ presentaciones: 1, costoEstimado: null })
+  })
+})
+
+describe('compraSalioCara (v3 §2)', () => {
+  it('tapioca del pack ($0.198/g) contra Tea Zone ($0.086/g): cara', () => {
+    expect(sobrecostoVsReposicion(119 / 600, 235 / 2720)!).toBeCloseTo(1.2955, 3)
+    expect(compraSalioCara(119 / 600, 235 / 2720)).toBe(true)
+  })
+  it('30 % exacto no avisa; más de 30 % sí; sin referencia nunca', () => {
+    expect(compraSalioCara(1.3, 1)).toBe(false)
+    expect(compraSalioCara(1.31, 1)).toBe(true)
+    expect(compraSalioCara(5, null)).toBe(false)
   })
 })
 

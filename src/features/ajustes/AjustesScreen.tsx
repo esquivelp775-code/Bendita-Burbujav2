@@ -12,6 +12,7 @@ import {
   setTamanoActivo,
 } from '../../lib/store/remoteStore'
 import { useStore } from '../../lib/store/useStore'
+import { SeccionEventos, SeccionParametros, SeccionProveedores, SeccionTamanos, SeccionTurnos } from './AjustesSecciones'
 
 function Toggle({ activo, etiqueta, onChange }: { activo: boolean; etiqueta: string; onChange: (v: boolean) => Promise<unknown> }) {
   const [error, setError] = useState<string | null>(null)
@@ -82,7 +83,6 @@ export function AjustesScreen() {
   const canales = useStore((s) => s.canales)
   const configPlataformaPorCanal = useStore((s) => s.configPlataformaPorCanal)
   const configPublicoPorCanal = useStore((s) => s.configPublicoPorCanal)
-  const tamanos = useStore((s) => Object.values(s.tamanos).sort((a, b) => a.ml - b.ml))
   const bebidas = useStore((s) => Object.values(s.bebidas))
   const adicionales = useStore((s) => Object.values(s.adicionales))
   const parametros = useStore((s) => s.parametros)
@@ -200,18 +200,11 @@ export function AjustesScreen() {
         })}
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm label-uppercase">Tamaños</h2>
-        {tamanos.map((t) => (
-          <div key={t.nombre} className="flex justify-between items-center py-2 border-b border-border">
-            <span>
-              {t.nombre}
-              {t.canales && <span className="block text-xs text-muted">{t.canales.join(' · ')}</span>}
-            </span>
-            <Toggle etiqueta={`Tamaño ${t.nombre} activo`} activo={t.activo} onChange={(v) => setTamanoActivo(t.nombre, v)} />
-          </div>
-        ))}
-      </section>
+      <SeccionParametros />
+      <SeccionTurnos />
+      <SeccionEventos />
+      <SeccionTamanos onActivo={setTamanoActivo} />
+      <SeccionProveedores />
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm label-uppercase">Bebidas</h2>
