@@ -45,6 +45,8 @@ function estado(insumos: Insumo[], existencias: Record<string, Partial<Existenci
     configEvento: { minimoBebidas: 30, traslado: 400, equipoHieloDesechables: 300, horasMontaje: 3 },
     fichas: {},
     proveedores: [],
+    eventos: [],
+    aperturas: [],
     primerUsoCompleto: true,
     cargando: false,
     sinConexion: false,

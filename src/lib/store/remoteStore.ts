@@ -23,7 +23,9 @@ import type {
 import {
   charolasDelPedido,
   comisionEfectivaDe,
+  cotizarEvento,
   desgloseBotana,
+  desgloseCargoServicio,
   desgloseLinea,
   evaluarAlertasReorden,
   resolverLineasConsumo,
@@ -141,6 +143,38 @@ export interface FichaInsumo {
   ultimaCompra?: { fecha: string; precioPorPresentacion: number; contenidoUtil: number; iva: number; proveedorId?: string }
 }
 
+export type EstadoEvento = 'cotizado' | 'confirmado' | 'realizado' | 'cobrado' | 'cancelado'
+
+export interface EventoStore {
+  id: string
+  nombre: string
+  /** "AAAA-MM-DD" */
+  fecha: string
+  lugar?: string
+  estado: EstadoEvento
+  clienteId?: string
+  clienteNombre?: string
+  cargoServicio: number
+  anticipo: number
+  trasladoReal: number
+  equipoReal: number
+  horasMontaje: number
+  notas?: string
+  lineas: { bebidaNombre: string; tamanoNombre: string; cantidad: number; precioUnitario: number }[]
+}
+
+export interface AperturaStore {
+  id: string
+  insumoClave: string
+  /** "AAAA-MM-DD" */
+  abiertoEn: string
+  /** Tandas: hora exacta de caducidad; si no, vale caducaAbiertoDias del insumo. */
+  caducaEn?: string
+  /** Hora exacta en que se registró (inicio de una tanda). */
+  creadoEn?: string
+  nota?: string
+}
+
 export interface EstadoStore {
   parametros: Parametros
   turnos: TurnoStore[]
@@ -164,6 +198,9 @@ export interface EstadoStore {
   configEvento: ConfigEventoStore
   fichas: Record<string, FichaInsumo>
   proveedores: ProveedorStore[]
+  eventos: EventoStore[]
+  /** Aperturas y tandas vigentes (sin marcar como terminadas). */
+  aperturas: AperturaStore[]
   ultimoCanal?: string
   ultimoTamano?: string
   ultimaLeche?: string
@@ -217,6 +254,8 @@ function estadoVacio(): EstadoStore {
     configEvento: { minimoBebidas: 30, traslado: 400, equipoHieloDesechables: 300, horasMontaje: 3 },
     fichas: {},
     proveedores: [],
+    eventos: [],
+    aperturas: [],
     primerUsoCompleto: false,
     cargando: true,
     sinConexion: false,
@@ -754,6 +793,54 @@ async function cargarEvento() {
   return { escalasEvento, configEvento }
 }
 
+/** Eventos de los últimos 4 meses en adelante (con su cotización y cliente). */
+async function cargarEventos(): Promise<EventoStore[]> {
+  const desde = new Date()
+  desde.setDate(desde.getDate() - 120)
+  const { data, error } = await supabase
+    .from('eventos')
+    .select('*, clientes(nombre), evento_cotizacion_lineas(bebida_id, tamano_id, cantidad, precio_unitario)')
+    .gte('fecha', desde.toISOString().slice(0, 10))
+    .order('fecha')
+  if (error) throw error
+  return (data ?? []).map((e: any) => ({
+    id: e.id,
+    nombre: e.nombre,
+    fecha: String(e.fecha).slice(0, 10),
+    lugar: e.lugar ?? undefined,
+    estado: e.estado,
+    clienteId: e.cliente_id ?? undefined,
+    clienteNombre: e.clientes?.nombre ?? undefined,
+    cargoServicio: e.cargo_servicio,
+    anticipo: e.anticipo,
+    trasladoReal: e.traslado_real,
+    equipoReal: e.equipo_real,
+    horasMontaje: e.horas_montaje,
+    notas: e.notas ?? undefined,
+    lineas: (e.evento_cotizacion_lineas ?? []).map((l: any) => ({
+      bebidaNombre: bebidaNombrePorId[l.bebida_id],
+      tamanoNombre: tamanoNombrePorId[l.tamano_id],
+      cantidad: l.cantidad,
+      precioUnitario: l.precio_unitario,
+    })),
+  }))
+}
+
+async function cargarAperturas(): Promise<AperturaStore[]> {
+  const { data, error } = await supabase.from('aperturas').select('*').is('agotado_en', null).order('abierto_en')
+  if (error) throw error
+  return (data ?? [])
+    .filter((a) => insumoClavePorId[a.insumo_id])
+    .map((a) => ({
+      id: a.id,
+      insumoClave: insumoClavePorId[a.insumo_id],
+      abiertoEn: String(a.abierto_en).slice(0, 10),
+      caducaEn: a.caduca_en ?? undefined,
+      creadoEn: a.creado_en ?? undefined,
+      nota: a.nota ?? undefined,
+    }))
+}
+
 /**
  * Inicio de la ventana de ventas que vive en memoria: el lunes de la semana pasada. Cubre Hoy, la
  * semana en curso y la comparación con la semana anterior; los rangos más largos van por RPC agregada.
@@ -769,7 +856,7 @@ export function inicioVentanaVentas(hoy = new Date()): Date {
 async function cargarVentas() {
   const desde = inicioVentanaVentas().toISOString()
   const pedidosRows = await leerPaginado<any>((a, b) =>
-    supabase.from('pedidos').select('*, clientes(nombre)').gte('fecha_hora', desde).order('fecha_hora').order('id').range(a, b),
+    supabase.from('pedidos').select('*, clientes(nombre), eventos(nombre)').gte('fecha_hora', desde).order('fecha_hora').order('id').range(a, b),
   )
   const lineasRows = await leerPaginado<any>((a, b) =>
     supabase
@@ -790,6 +877,7 @@ async function cargarVentas() {
     formaPago: p.forma_pago ?? undefined,
     folio: p.folio_plataforma ?? undefined,
     clienteNombre: p.clientes?.nombre ?? undefined,
+    eventoNombre: p.eventos?.nombre ?? undefined,
   }))
   const pedidoPorId = new Map(pedidos.map((p) => [p.id, p]))
 
@@ -864,7 +952,7 @@ export async function cargarTodo(opciones: { enSegundoPlano?: boolean } = {}): P
     const activos = await cargarActivos()
     const botanas = await cargarBotanas()
     const { escalasEvento, configEvento } = await cargarEvento()
-    const [fichas, proveedores] = await Promise.all([cargarFichas(), cargarProveedores()])
+    const [fichas, proveedores, eventos, aperturas] = await Promise.all([cargarFichas(), cargarProveedores(), cargarEventos(), cargarAperturas()])
     const { pedidos, ventaLineas } = await cargarVentas()
     const existencias = await cargarExistencias()
 
@@ -891,6 +979,8 @@ export async function cargarTodo(opciones: { enSegundoPlano?: boolean } = {}): P
         configEvento,
         fichas,
         proveedores,
+        eventos,
+        aperturas,
         primerUsoCompleto: true,
         cargando: false,
         error: undefined,
@@ -1122,6 +1212,10 @@ export interface CerrarPedidoInput {
   costoEnvio?: number
   formaPago?: FormaPago
   folio?: string
+  /** Canal Evento: el evento al que pertenece el pedido. */
+  eventoId?: string
+  /** Canal Evento: cargo de servicio (IVA incluido) que se cobra como línea aparte. */
+  cargoServicio?: number
 }
 
 const CLAVE_CHAROLA = 'charola_4'
@@ -1196,6 +1290,35 @@ export async function registrarPedidoConItems(input: CerrarPedidoInput): Promise
     }
   })
 
+  if (input.cargoServicio && input.cargoServicio > 0) {
+    const desglose = desgloseCargoServicio(input.cargoServicio, estado.parametros.ivaVenta)
+    const id = crypto.randomUUID()
+    lineasVista.push({ id, pedidoId, fechaHora: fechaIso, canalNombre: canal.nombre, tipo: 'cargo_servicio', adicionalesElegidos: [], cantidad: 1, desglose })
+    lineas.push({
+      id,
+      tipo: 'cargo_servicio',
+      adicionales: [],
+      cantidad: 1,
+      precio: desglose.precio,
+      iva_trasladado: desglose.ivaTrasladado,
+      ingreso_sin_iva: desglose.ingresoSinIva,
+      comision: 0,
+      iva_comision: 0,
+      insumos: 0,
+      empaque: 0,
+      vaso_tapa: 0,
+      indirectos: 0,
+      minutos: 0,
+      tarifa_hora: 0,
+      mano_obra: 0,
+      utilidad: 0,
+      retencion_isr: 0,
+      retencion_iva: 0,
+      deposito_esperado: desglose.depositoEsperado,
+      movimientos: [],
+    })
+  }
+
   // v3 §3: charolas por pedido (no por línea); su costo ya va prorrateado en indirectos.
   const movimientosPedido: RegistrarPedidoPayload['movimientos_pedido'] = []
   const bebidasDelPedido = input.items.filter((i) => i.tipo === 'bebida').reduce((acc, i) => acc + i.cantidad, 0)
@@ -1216,6 +1339,7 @@ export async function registrarPedidoConItems(input: CerrarPedidoInput): Promise
       estado: 'cerrado',
       forma_pago: esPlataforma ? 'plataforma' : (input.formaPago ?? null),
       folio_plataforma: esPlataforma ? input.folio?.trim() || null : null,
+      evento_id: canal.tipo === 'evento' ? (input.eventoId ?? null) : null,
     },
     lineas,
     movimientos_pedido: movimientosPedido,
@@ -1230,6 +1354,7 @@ export async function registrarPedidoConItems(input: CerrarPedidoInput): Promise
     clienteNombre: input.clienteNombre?.trim() || undefined,
     formaPago: payload.pedido.forma_pago ?? undefined,
     folio: payload.pedido.folio_plataforma ?? undefined,
+    eventoNombre: input.eventoId ? estado.eventos.find((e) => e.id === input.eventoId)?.nombre : undefined,
   }
   const cliente =
     input.clienteNombre?.trim() || input.clienteTelefono?.trim()
@@ -1556,4 +1681,210 @@ export async function actualizarTamano(nombre: string, cambios: { vasoInsumoClav
   if (error) throw error
   set((s) => ({ ...s, tamanos: { ...s.tamanos, [nombre]: { ...s.tamanos[nombre], ...cambios } } }))
   void guardarSnapshot()
+}
+
+// ─── Ola 5: eventos, aperturas y cierre del día ─────────────────────────────
+
+/** Utilidad promedio por bebida en apps de los últimos 28 días (comparativo del cotizador, spec §5.8). */
+export function utilidadPromedioApps(): number {
+  const desde = Date.now() - 28 * 86_400_000
+  const canalesApp = new Set(estado.canales.filter((c) => c.tipo === 'plataforma').map((c) => c.nombre))
+  const cancelados = new Set(estado.pedidos.filter((p) => p.estado === 'cancelado').map((p) => p.id))
+  const lineas = estado.ventaLineas.filter(
+    (l) => l.tipo === 'bebida' && canalesApp.has(l.canalNombre) && !cancelados.has(l.pedidoId) && new Date(l.fechaHora).getTime() >= desde,
+  )
+  const unidades = lineas.reduce((a, l) => a + l.cantidad, 0)
+  if (unidades > 0) return lineas.reduce((a, l) => a + l.desglose.utilidad * l.cantidad, 0) / unidades
+  // Sin ventas en apps todavía: la utilidad objetivo promedio de las categorías (metas del modelo).
+  const objetivos = Object.values(estado.categorias).map((c) => c.utilidadObjetivo)
+  return objetivos.length ? objetivos.reduce((a, b) => a + b, 0) / objetivos.length : 0
+}
+
+export interface LineaCotizacion {
+  bebidaNombre: string
+  tamanoNombre: string
+  cantidad: number
+}
+
+/** Cotiza con el motor (cotizarEvento): escala por total, precio de lista × factor, utilidad a tarifa fuera de turno. */
+export function cotizar(lineas: LineaCotizacion[], cargoServicioOverride?: number) {
+  const lecheDefault = Object.values(estado.leches).find((l) => l.esDefault)
+  return cotizarEvento({
+    lineas: lineas
+      .filter((l) => l.cantidad > 0 && estado.bebidas[l.bebidaNombre] && estado.tamanos[l.tamanoNombre])
+      .map((l) => ({
+        bebida: estado.bebidas[l.bebidaNombre],
+        tamano: estado.tamanos[l.tamanoNombre],
+        cantidad: l.cantidad,
+        precioApp: precioAppVigente(l.bebidaNombre, l.tamanoNombre),
+      })),
+    escalas: estado.escalasEvento,
+    minimoBebidas: estado.configEvento.minimoBebidas,
+    cargoServicioOverride,
+    traslado: estado.configEvento.traslado,
+    equipoHieloDesechables: estado.configEvento.equipoHieloDesechables,
+    horasMontaje: estado.configEvento.horasMontaje,
+    utilidadPromedioApps: utilidadPromedioApps(),
+    lecheDefault,
+    insumos: estado.insumos,
+    adicionalesCatalogo: estado.adicionales,
+    categorias: estado.categorias,
+    parametros: estado.parametros,
+    turnos: estado.turnos,
+    fechaHora: new Date(),
+  })
+}
+
+async function refrescarEventos() {
+  const eventos = await cargarEventos()
+  set((s) => ({ ...s, eventos }))
+  void guardarSnapshot()
+}
+
+export interface EventoInput {
+  id?: string
+  nombre: string
+  fecha: string
+  lugar?: string
+  clienteNombre?: string
+  clienteTelefono?: string
+  cargoServicio: number
+  anticipo: number
+  notas?: string
+  lineas: LineaCotizacion[]
+}
+
+export async function guardarEvento(e: EventoInput): Promise<string> {
+  if (!e.nombre.trim()) throw new Error('Ponle nombre al evento')
+  if (!e.fecha) throw new Error('Falta la fecha')
+  const cot = cotizar(e.lineas, e.cargoServicio)
+  const precios = new Map(cot.lineas.map((l) => [`${l.bebida}|${l.tamano}`, l.precioUnitario]))
+  let clienteId: string | null = null
+  if (e.clienteNombre?.trim() || e.clienteTelefono?.trim()) clienteId = await clientePorTelefonoONombre(e.clienteNombre, e.clienteTelefono)
+  const { data, error } = await supabase.rpc('guardar_evento', {
+    payload: {
+      id: e.id ?? null,
+      nombre: e.nombre.trim(),
+      fecha: e.fecha,
+      lugar: e.lugar?.trim() || null,
+      cliente_id: clienteId,
+      cargo_servicio: e.cargoServicio,
+      anticipo: e.anticipo,
+      notas: e.notas?.trim() || null,
+      lineas: e.lineas
+        .filter((l) => l.cantidad > 0)
+        .map((l) => ({
+          bebida_id: bebidaIdPorNombre[l.bebidaNombre],
+          tamano_id: tamanoIdPorNombre[l.tamanoNombre],
+          cantidad: l.cantidad,
+          precio_unitario: precios.get(`${l.bebidaNombre}|${l.tamanoNombre}`) ?? 0,
+        })),
+    },
+  })
+  if (error) throw error
+  await refrescarEventos()
+  return data as string
+}
+
+export async function cambiarEstadoEvento(id: string, estadoNuevo: EstadoEvento) {
+  const { error } = await supabase.from('eventos').update({ estado: estadoNuevo }).eq('id', id)
+  if (error) throw error
+  await refrescarEventos()
+}
+
+/**
+ * Evento realizado: registra en la caja las bebidas cotizadas (con el factor de su escala) más el
+ * cargo de servicio, descuenta inventario, y guarda los costos reales del día (spec §5.8 y §5.11).
+ */
+export async function registrarEventoRealizado(id: string, costos: { trasladoReal: number; equipoReal: number; horasMontaje: number; formaPago: FormaPago }) {
+  const evento = estado.eventos.find((e) => e.id === id)
+  if (!evento) throw new Error('Evento no encontrado')
+  const canal = estado.canales.find((c) => c.tipo === 'evento')
+  if (!canal) throw new Error('No hay canal de eventos')
+  const n = evento.lineas.reduce((a, l) => a + l.cantidad, 0)
+  const escala = estado.escalasEvento.find((e) => n >= e.desde && (e.hasta == null || n <= e.hasta))
+  if (!escala) throw new Error(`El evento tiene ${n} bebidas; el mínimo es ${estado.configEvento.minimoBebidas}`)
+  const lecheDefault = Object.values(estado.leches).find((l) => l.esDefault)
+  const items: ItemCarrito[] = evento.lineas.map((l) => ({
+    tipo: 'bebida',
+    fechaHora: new Date(),
+    bebida: estado.bebidas[l.bebidaNombre],
+    tamano: estado.tamanos[l.tamanoNombre],
+    lecheElegida: estado.bebidas[l.bebidaNombre].llevaLeche ? lecheDefault : undefined,
+    adicionalesElegidos: [],
+    cantidad: l.cantidad,
+    factorEvento: escala.factor,
+  }))
+  await registrarPedidoConItems({ canalNombre: canal.nombre, items, formaPago: costos.formaPago, eventoId: id, cargoServicio: evento.cargoServicio })
+  const { error } = await supabase
+    .from('eventos')
+    .update({ estado: 'realizado', traslado_real: costos.trasladoReal, equipo_real: costos.equipoReal, horas_montaje: costos.horasMontaje })
+    .eq('id', id)
+  if (error) throw error
+  await refrescarEventos()
+}
+
+// ── Aperturas y tandas ──
+async function refrescarAperturas() {
+  const aperturas = await cargarAperturas()
+  set((s) => ({ ...s, aperturas }))
+  void guardarSnapshot()
+}
+
+/** "Abrí uno" (días del insumo) o "Nueva tanda" (horas). */
+export async function abrirInsumo(insumoClave: string, opciones: { horas?: number; nota?: string } = {}) {
+  const ahora = new Date()
+  const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
+  const { error } = await supabase.from('aperturas').insert({
+    insumo_id: insumoIdPorClave[insumoClave],
+    abierto_en: hoy,
+    caduca_en: opciones.horas ? new Date(ahora.getTime() + opciones.horas * 3_600_000).toISOString() : null,
+    nota: opciones.nota?.trim() || null,
+  })
+  if (error) throw error
+  await refrescarAperturas()
+}
+
+export async function terminarApertura(id: string) {
+  const ahora = new Date()
+  const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
+  const { error } = await supabase.from('aperturas').update({ agotado_en: hoy }).eq('id', id)
+  if (error) throw error
+  await refrescarAperturas()
+}
+
+// ── Cierre del día ──
+export interface CierreStore {
+  fecha: string
+  mermaTapiocaG: number
+  notas?: string
+  efectivoEsperado?: number
+  efectivoContado?: number
+}
+
+export async function cargarCierre(fecha: string): Promise<CierreStore | null> {
+  const { data, error } = await supabase.from('cierres_dia').select('*').eq('fecha', fecha).limit(1)
+  if (error) throw error
+  const c = data?.[0]
+  return c
+    ? {
+        fecha: String(c.fecha).slice(0, 10),
+        mermaTapiocaG: c.merma_tapioca_g,
+        notas: c.notas ?? undefined,
+        efectivoEsperado: c.efectivo_esperado ?? undefined,
+        efectivoContado: c.efectivo_contado ?? undefined,
+      }
+    : null
+}
+
+export async function cerrarDia(c: CierreStore) {
+  const { error } = await supabase.rpc('cerrar_dia', {
+    p_fecha: c.fecha,
+    p_merma_tapioca_g: c.mermaTapiocaG,
+    p_notas: c.notas?.trim() || null,
+    p_efectivo_esperado: c.efectivoEsperado ?? null,
+    p_efectivo_contado: c.efectivoContado ?? null,
+  })
+  if (error) throw error
+  actualizarServidor({ existencias: await cargarExistencias() })
 }

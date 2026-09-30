@@ -61,6 +61,12 @@ export function VenderScreen() {
   const [formaPago, setFormaPago] = useState<FormaPago>('efectivo')
   const [folio, setFolio] = useState('')
   const [bebidasEvento, setBebidasEvento] = useState(30)
+  const [eventoId, setEventoId] = useState<string>('')
+  const eventosHoy = useStore((s) => {
+    const d = new Date()
+    const hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    return s.eventos.filter((e) => e.fecha === hoy && (e.estado === 'confirmado' || e.estado === 'realizado'))
+  })
   const [deshacer, setDeshacer] = useState<{ item: ItemCarrito } | null>(null)
   const [canalPorCambiar, setCanalPorCambiar] = useState<string | null>(null)
   const [hojaAbierta, setHojaAbierta] = useState(false)
@@ -89,7 +95,9 @@ export function VenderScreen() {
     if (carrito.length === 0) intentarActualizar()
   }, [carrito, canal])
 
-  const escalaEvento = escalasEvento.find((e) => bebidasEvento >= e.desde && (e.hasta == null || bebidasEvento <= e.hasta))
+  const eventoDelDia = eventosHoy.find((e) => e.id === eventoId)
+  const totalEvento = eventoDelDia ? eventoDelDia.lineas.reduce((a, l) => a + l.cantidad, 0) : bebidasEvento
+  const escalaEvento = escalasEvento.find((e) => totalEvento >= e.desde && (e.hasta == null || totalEvento <= e.hasta))
   const factorEvento = canal?.tipo === 'evento' ? escalaEvento?.factor : undefined
 
   const faltaEntrega = canal?.tipo === 'publico' && entrega == null
@@ -118,6 +126,7 @@ export function VenderScreen() {
         clienteTelefono: canal.tipo === 'publico' ? clienteTelefono : undefined,
         formaPago: canal.tipo === 'plataforma' ? 'plataforma' : formaPago,
         folio: canal.tipo === 'plataforma' ? folio : undefined,
+        eventoId: canal.tipo === 'evento' && eventoId ? eventoId : undefined,
       })
       setErrorGuardado(null)
       limpiarPedido()
@@ -349,13 +358,27 @@ export function VenderScreen() {
 
             {canal.tipo === 'evento' && (
               <div className="flex items-center gap-2 flex-wrap text-sm bg-surface border border-border rounded p-3">
+                {eventosHoy.length > 0 && (
+                  <label className="flex items-center gap-2 w-full">
+                    Evento:
+                    <select className="h-9 flex-1 min-w-0 border border-border rounded px-2 bg-bg" value={eventoId} onChange={(e) => setEventoId(e.target.value)}>
+                      <option value="">Venta suelta (sin evento)</option>
+                      {eventosHoy.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.nombre} · {e.lineas.reduce((a, l) => a + l.cantidad, 0)} bebidas
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label htmlFor="bebidasEvento">Bebidas totales del evento:</label>
                 <input
                   id="bebidasEvento"
                   type="number"
                   min={1}
-                  className="w-20 h-9 border border-border rounded px-2 bg-bg"
-                  value={bebidasEvento}
+                  disabled={!!eventoDelDia}
+                  className="w-20 h-9 border border-border rounded px-2 bg-bg disabled:opacity-60"
+                  value={totalEvento}
                   onChange={(e) => setBebidasEvento(Number(e.target.value))}
                 />
                 {escalaEvento ? (

@@ -4,15 +4,17 @@ import { CampoNumero } from '../../components/CampoNumero'
 import { compraSalioCara, generaAvisoCompra, sobrecostoVsReposicion, umbralReorden, type Insumo } from '../../lib/calculos'
 import { formatoCantidad, formatoCostoUnitario, formatoMoneda, formatoPorcentaje } from '../../lib/format'
 import {
+  abrirInsumo,
   actualizarInsumo,
   cargarKardex,
+  terminarApertura,
   datosExistencia,
   registrarConteoLocal,
   registrarMerma,
   setStockObjetivo,
   type MovimientoKardex,
 } from '../../lib/store/remoteStore'
-import { alertasInventario, listaDeCompras, type AvisoInventario } from '../../lib/store/selectors'
+import { alertasInventario, AVISOS_DE_COMPRA, listaDeCompras, type AvisoInventario } from '../../lib/store/selectors'
 import { useStore } from '../../lib/store/useStore'
 import { guardarPrecarga } from '../compras/precargaCompra'
 
@@ -20,7 +22,9 @@ const PRIORIDAD_ORDEN = { alta: 0, media: 1, baja: 2 } as const
 
 const ETIQUETA_AVISO: Record<AvisoInventario['tipo'], string> = {
   'sin vasos': 'Sin vasos',
+  vencido: 'Venció',
   agotado: 'Agotado',
+  'por vencer': 'Por vencer',
   reorden: 'Reponer',
   cobertura: 'Menos de 3 días',
 }
@@ -49,7 +53,7 @@ export function InventarioScreen() {
   const [fichaAbierta, setFichaAbierta] = useState<string | null>(null)
   const navegar = useNavigate()
 
-  const avisoPorClave = new Map(avisos.filter((a) => a.tipo !== 'sin vasos').map((a) => [a.insumoClave, a]))
+  const avisoPorClave = new Map(avisos.filter((a) => AVISOS_DE_COMPRA.includes(a.tipo)).map((a) => [a.insumoClave, a]))
   const filas = insumos
     .map((insumo) => ({ insumo, ...datosExistencia(insumo.clave), aviso: avisoPorClave.get(insumo.clave) }))
     .sort(
@@ -74,7 +78,7 @@ export function InventarioScreen() {
       {grupos.length > 0 && (
         <section className="border border-warn rounded p-4 bg-surface flex flex-col gap-4">
           <div className="flex justify-between items-baseline gap-2">
-            <h2 className="text-sm label-uppercase m-0 text-warn">Lista de compras · {avisos.filter((a) => a.tipo !== 'sin vasos').length}</h2>
+            <h2 className="text-sm label-uppercase m-0 text-warn">Lista de compras · {grupos.reduce((n, g) => n + g.renglones.length, 0)}</h2>
             {totalLista > 0 && <span className="text-sm tabular text-muted">≈ {formatoMoneda(totalLista)}</span>}
           </div>
           {grupos.map((g) => (
@@ -107,6 +111,8 @@ export function InventarioScreen() {
           ))}
         </section>
       )}
+
+      <AbiertosYTandas onAbrirFicha={setFichaAbierta} />
 
       <section className="border border-border rounded p-4 bg-surface">
         <h2 className="text-sm label-uppercase mb-1">Existencia</h2>
@@ -146,6 +152,91 @@ export function InventarioScreen() {
       </section>
 
       {fichaAbierta && <FichaInsumoModal insumoClave={fichaAbierta} onCerrar={() => setFichaAbierta(null)} />}
+    </div>
+  )
+}
+
+/** Lo abierto y las tandas (tapioca cocida, cold brew, almíbar) con cuándo vencen. */
+function AbiertosYTandas({ onAbrirFicha }: { onAbrirFicha: (clave: string) => void }) {
+  const aperturas = useStore((s) => s.aperturas)
+  const insumos = useStore((s) => s.insumos)
+  const avisos = useStore(alertasInventario)
+  const [error, setError] = useState<string | null>(null)
+  if (aperturas.length === 0) return null
+  const avisoDe = new Map(avisos.filter((a) => a.aperturaId).map((a) => [a.aperturaId!, a]))
+  return (
+    <section className="border border-border rounded p-4 bg-surface flex flex-col gap-1">
+      <h2 className="text-sm label-uppercase m-0 mb-2">Abierto y tandas</h2>
+      {aperturas.map((a) => {
+        const aviso = avisoDe.get(a.id)
+        const insumo = insumos[a.insumoClave]
+        const vence = a.caducaEn
+          ? new Date(a.caducaEn).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+          : insumo?.caducaAbiertoDias != null
+            ? `${insumo.caducaAbiertoDias} días desde ${a.abiertoEn}`
+            : 'sin caducidad'
+        return (
+          <div key={a.id} className="flex justify-between items-center gap-3 py-1.5 border-b border-border text-sm">
+            <button className="text-left min-w-0" onClick={() => onAbrirFicha(a.insumoClave)}>
+              {a.nota ? `${a.nota} · ` : ''}
+              {insumo?.nombre ?? a.insumoClave}
+              <span className={`block text-xs ${aviso?.tipo === 'vencido' ? 'text-ink-dark' : aviso ? 'text-warn' : 'text-muted'}`}>
+                {aviso?.tipo === 'vencido' ? 'Venció' : aviso ? 'Vence pronto' : 'Vence'} · {vence}
+              </span>
+            </button>
+            <button
+              className="text-xs underline whitespace-nowrap"
+              onClick={() =>
+                terminarApertura(a.id)
+                  .then(() => setError(null))
+                  .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+              }
+            >
+              Se terminó
+            </button>
+          </div>
+        )
+      })}
+      {error && <p className="text-sm text-ink-dark m-0">No se guardó: {error}</p>}
+    </section>
+  )
+}
+
+function Abrir({ insumoClave, caducaAbiertoDias }: { insumoClave: string; caducaAbiertoDias?: number | null }) {
+  const [horas, setHoras] = useState('4')
+  const [nota, setNota] = useState('')
+  const [mensaje, setMensaje] = useState<string | null>(null)
+  const hacer = (p: Promise<unknown>, texto: string) =>
+    p.then(() => setMensaje(texto)).catch((e) => setMensaje(`No se guardó: ${e instanceof Error ? e.message : String(e)}`))
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-3">
+      <span className="label-uppercase">Abrir o preparar</span>
+      {caducaAbiertoDias != null && (
+        <button className="h-10 rounded border border-border font-semibold" onClick={() => hacer(abrirInsumo(insumoClave), `Registrado: vence en ${caducaAbiertoDias} días.`)}>
+          Abrí uno (dura {caducaAbiertoDias} días)
+        </button>
+      )}
+      <div className="grid grid-cols-[1fr_5rem_auto] gap-2 items-end">
+        <label className="flex flex-col gap-1">
+          Tanda (opcional)
+          <input className="h-10 border border-border rounded px-2 bg-surface" placeholder="Tapioca cocida" value={nota} onChange={(e) => setNota(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-1">
+          Horas
+          <input inputMode="decimal" className="h-10 border border-border rounded px-2 bg-surface" value={horas} onChange={(e) => setHoras(e.target.value)} />
+        </label>
+        <button
+          className="h-10 px-3 rounded bg-ink text-bg font-semibold"
+          onClick={() => {
+            const h = Number(horas.replace(',', '.'))
+            if (!(h > 0)) return setMensaje('Escribe cuántas horas dura')
+            hacer(abrirInsumo(insumoClave, { horas: h, nota: nota || 'Tanda' }), `Tanda registrada: vence en ${h} h.`)
+          }}
+        >
+          Nueva tanda
+        </button>
+      </div>
+      {mensaje && <p className="text-xs m-0 text-muted">{mensaje}</p>}
     </div>
   )
 }
@@ -281,6 +372,7 @@ function FichaInsumoModal({ insumoClave, onCerrar }: { insumoClave: string; onCe
                 Volver al objetivo automático
               </button>
             )}
+            <Abrir insumoClave={insumoClave} caducaAbiertoDias={insumo.caducaAbiertoDias} />
             {error && <p className="text-sm text-ink-dark m-0">No se guardó: {error}</p>}
           </div>
         )}

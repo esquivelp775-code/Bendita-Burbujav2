@@ -6,7 +6,7 @@ import { sincronizar } from '../../lib/offline/queue'
 import { alertasInventario } from '../../lib/store/selectors'
 import { useStore } from '../../lib/store/useStore'
 
-type Icono = 'hoy' | 'vender' | 'desglose' | 'inventario' | 'compras' | 'recetas' | 'equipo' | 'ajustes' | 'mas'
+type Icono = 'hoy' | 'vender' | 'desglose' | 'inventario' | 'compras' | 'recetas' | 'equipo' | 'ajustes' | 'mas' | 'eventos' | 'cierre'
 
 interface ItemNav {
   to: string
@@ -21,6 +21,8 @@ const NAV_GROUPS: { titulo: string; items: ItemNav[] }[] = [
       { to: '/hoy', label: 'Hoy', icono: 'hoy' },
       { to: '/vender', label: 'Vender', icono: 'vender' },
       { to: '/desglose', label: 'Desglose del día', icono: 'desglose' },
+      { to: '/cierre', label: 'Cierre del día', icono: 'cierre' },
+      { to: '/eventos', label: 'Eventos', icono: 'eventos' },
     ],
   },
   {
@@ -56,6 +58,8 @@ const TRAZOS: Record<Icono, string> = {
   equipo: 'M4 17h16 M6 17V9h12v8 M9 9V5h6v4',
   ajustes: 'M12 9a3 3 0 1 0 0.01 0 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M4.9 4.9l2.1 2.1 M17 17l2.1 2.1 M4.9 19.1L7 17 M17 7l2.1-2.1',
   mas: 'M5 12h.01 M12 12h.01 M19 12h.01',
+  eventos: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z',
+  cierre: 'M5 4h14v16H5z M9 9l2 2 4-4 M9 15h6',
 }
 
 function Icono({ nombre }: { nombre: Icono }) {

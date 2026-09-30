@@ -2,8 +2,10 @@ import {
   activoEnUso,
   cantidadSugeridaCompra,
   desgloseDelDia,
+  estadoCaducidad,
   evaluarAlertasReorden,
   generaAvisoCompra,
+  venceApertura,
   tamanosAgotadosSinRecompra,
   type ActivoDia,
   type EventoDia,
@@ -73,7 +75,11 @@ export function resumenDia(s: EstadoStore, fecha: Date) {
   const pedidosDelDia = s.pedidos.filter((p) => p.estado !== 'cancelado' && enRango(p.fechaHora, desde, hasta))
   const pedidosDia: PedidoDia[] = pedidosDelDia.map((p) => ({ envioCobrado: p.envioCobrado, costoEnvio: p.costoEnvio }))
 
-  const eventos: EventoDia[] = [] // Fase 2: eventos con costos reales capturados
+  // Costos reales de los eventos que se hicieron ese día (se capturan al marcarlos como realizados).
+  const diaTexto = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`
+  const eventos: EventoDia[] = s.eventos
+    .filter((e) => e.fecha === diaTexto && (e.estado === 'realizado' || e.estado === 'cobrado'))
+    .map((e) => ({ trasladoReal: e.trasladoReal, equipoReal: e.equipoReal, horasMontaje: e.horasMontaje }))
   const activos: ActivoDia[] = s.activos
     .filter((a) => activoEnUso(a, fecha))
     .map((a) => ({ costoNeto: a.costoNeto, valorRescate: a.valorRescate, vidaUtilMeses: a.vidaUtilMeses }))
@@ -112,6 +118,23 @@ export function resumenDia(s: EstadoStore, fecha: Date) {
     numeroLineas: lineas.reduce((a, l) => a + l.cantidad, 0),
     numeroBebidas: lineas.filter((l) => l.tipo === 'bebida').reduce((a, l) => a + l.cantidad, 0),
   }
+}
+
+/** Cobrado por forma de pago en el día (bebidas + envío), para el corte de caja. */
+export function ventasPorFormaPago(s: EstadoStore, fecha: Date) {
+  const desde = inicioDia(fecha).getTime()
+  const hasta = finDia(fecha).getTime()
+  const totales = { efectivo: 0, transferencia: 0, tarjeta: 0, plataforma: 0, sinRegistrar: 0 }
+  let enviosPagados = 0
+  for (const p of s.pedidos) {
+    const t = new Date(p.fechaHora).getTime()
+    if (p.estado === 'cancelado' || t < desde || t > hasta) continue
+    const total = p.envioCobrado + s.ventaLineas.filter((l) => l.pedidoId === p.id).reduce((a, l) => a + l.desglose.precio * l.cantidad, 0)
+    const clave = p.formaPago ?? 'sinRegistrar'
+    totales[clave] += total
+    if (p.formaPago === 'efectivo') enviosPagados += p.costoEnvio
+  }
+  return { ...totales, enviosPagadosEnEfectivo: enviosPagados }
 }
 
 export interface ResumenSemana {
@@ -186,7 +209,7 @@ export interface GrupoCompra {
 export function listaDeCompras(s: EstadoStore): GrupoCompra[] {
   const grupos = new Map<string, GrupoCompra>()
   for (const aviso of alertasInventario(s)) {
-    if (aviso.tipo === 'sin vasos') continue
+    if (!AVISOS_DE_COMPRA.includes(aviso.tipo)) continue
     const ficha = s.fichas[aviso.insumoClave]
     const objetivo = s.existencias[aviso.insumoClave]?.stockObjetivoEfectivo ?? null
     const contenidoUtil = ficha?.ultimaCompra?.contenidoUtil || ficha?.contenidoUtil || 1
@@ -215,7 +238,10 @@ export function listaDeCompras(s: EstadoStore): GrupoCompra[] {
   return [...grupos.values()].sort((a, b) => (a.proveedorId ? 0 : 1) - (b.proveedorId ? 0 : 1) || a.proveedor.localeCompare(b.proveedor))
 }
 
-export type TipoAviso ='sin vasos' | 'agotado' | 'reorden' | 'cobertura'
+export type TipoAviso = 'sin vasos' | 'vencido' | 'agotado' | 'por vencer' | 'reorden' | 'cobertura'
+
+/** Los avisos que sí van a la lista de compras. */
+export const AVISOS_DE_COMPRA: TipoAviso[] = ['agotado', 'reorden', 'cobertura']
 
 export interface AvisoInventario {
   insumoClave: string
@@ -224,9 +250,12 @@ export interface AvisoInventario {
   existencia: number
   /** true si la existencia quedó en negativo: se vendió algo que el sistema no tenía registrado. */
   negativo: boolean
+  /** Aperturas y tandas: cuándo vence. */
+  vence?: Date
+  aperturaId?: string
 }
 
-const ORDEN_AVISO: Record<TipoAviso, number> = { 'sin vasos': 0, agotado: 1, reorden: 2, cobertura: 3 }
+const ORDEN_AVISO: Record<TipoAviso, number> = { 'sin vasos': 0, vencido: 1, agotado: 2, 'por vencer': 3, reorden: 4, cobertura: 5 }
 const ORDEN_PRIORIDAD = { alta: 0, media: 1, baja: 2 } as const
 
 /**
@@ -252,6 +281,29 @@ export function alertasInventario(s: EstadoStore): AvisoInventario[] {
     // Un agotado ya implica reorden y cobertura: se muestra un solo aviso por insumo, el más grave.
     const tipo = (['agotado', 'reorden', 'cobertura'] as const).find((t) => tipos.includes(t))
     if (tipo) avisos.push({ insumoClave: insumo.clave, tipo, nombre: insumo.nombre, existencia, negativo: existencia < 0 })
+  }
+  // Caducidad (spec §5.10): lo abierto o las tandas que vencen pronto o ya vencieron.
+  const ahora = new Date()
+  for (const a of s.aperturas ?? []) {
+    const insumo = s.insumos[a.insumoClave]
+    if (!insumo) continue
+    // Una tanda cuenta desde la hora en que se registró; un insumo abierto, desde el día.
+    const [y, m, d] = a.abiertoEn.split('-').map(Number)
+    const abierto = a.caducaEn && a.creadoEn ? new Date(a.creadoEn) : new Date(y, m - 1, d)
+    const vence = venceApertura(abierto, a.caducaEn ? new Date(a.caducaEn) : null, insumo.caducaAbiertoDias)
+    if (!vence) continue
+    const estadoCad = estadoCaducidad(abierto, vence, ahora)
+    if (estadoCad === 'vigente') continue
+    const cuando = vence.toLocaleString('es-MX', { weekday: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    avisos.push({
+      insumoClave: a.insumoClave,
+      tipo: estadoCad === 'vencido' ? 'vencido' : 'por vencer',
+      nombre: `${a.nota ? `${a.nota} · ` : ''}${insumo.nombre} ${estadoCad === 'vencido' ? 'venció' : 'vence'} ${cuando}`,
+      existencia: s.existencias[a.insumoClave]?.existencia ?? 0,
+      negativo: false,
+      vence,
+      aperturaId: a.id,
+    })
   }
   return avisos.sort(
     (a, b) =>

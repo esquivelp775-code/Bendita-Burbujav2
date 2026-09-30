@@ -1158,3 +1158,64 @@ export function desgloseBotana(input: DesgloseBotanaInput): DesgloseLinea {
     consumo: botana.insumoClave ? [{ insumoClave: botana.insumoClave, cantidad: 1 }] : [],
   }
 }
+// ─── Eventos, corte de caja y caducidad (Ola 5) ─────────────────────────────
+
+/**
+ * Cargo de servicio de un evento (spec §5.8): IVA incluido, sin costo. La utilidad de la línea va en 0
+ * porque desgloseDelDia ya suma el cargo sin IVA a la ganancia; así no se cuenta dos veces.
+ */
+export function desgloseCargoServicio(cargo: number, ivaVenta: number): DesgloseLinea {
+  const ingresoSinIva = cargo / (1 + ivaVenta)
+  return {
+    precio: redondeoCentavos(cargo),
+    ivaTrasladado: redondeoCentavos(cargo - ingresoSinIva),
+    ingresoSinIva: redondeoCentavos(ingresoSinIva),
+    comision: 0,
+    ivaComision: 0,
+    insumos: 0,
+    empaque: 0,
+    vasoTapa: 0,
+    indirectos: 0,
+    minutos: 0,
+    tarifaHora: 0,
+    manoDeObra: 0,
+    utilidad: 0,
+    retencionIsr: 0,
+    retencionIva: 0,
+    depositoEsperado: redondeoCentavos(cargo),
+    consumo: [],
+  }
+}
+
+export interface CorteDeCaja {
+  esperado: number
+  /** contado − esperado: positivo sobra, negativo falta. null si todavía no se cuenta. */
+  diferencia: number | null
+}
+
+/** Corte de caja: fondo inicial + ventas cobradas en efectivo − lo que se pagó en efectivo (repartidores, etc.). */
+export function corteDeCaja(input: { fondoInicial: number; ventasEfectivo: number; pagosEfectivo: number; contado?: number | null }): CorteDeCaja {
+  const esperado = redondeoCentavos(input.fondoInicial + input.ventasEfectivo - input.pagosEfectivo)
+  return { esperado, diferencia: input.contado == null ? null : redondeoCentavos(input.contado - esperado) }
+}
+
+export type EstadoCaducidad = 'vigente' | 'por vencer' | 'vencido'
+
+/**
+ * Cuándo vence algo abierto: la tanda trae su propia hora (tapioca cocida: horas); si no, los días
+ * que dura abierto el insumo. null si no caduca.
+ */
+export function venceApertura(abiertoEn: Date, caducaEn: Date | null | undefined, caducaAbiertoDias: number | null | undefined): Date | null {
+  if (caducaEn) return caducaEn
+  if (caducaAbiertoDias == null) return null
+  return new Date(abiertoEn.getFullYear(), abiertoEn.getMonth(), abiertoEn.getDate() + caducaAbiertoDias, abiertoEn.getHours(), abiertoEn.getMinutes())
+}
+
+/** "Por vencer": faltan 2 días o menos (spec §5.10); en tandas de menos de un día, el último cuarto de su vida. */
+export function estadoCaducidad(abiertoEn: Date, vence: Date, ahora: Date): EstadoCaducidad {
+  const restante = vence.getTime() - ahora.getTime()
+  if (restante <= 0) return 'vencido'
+  const duracion = vence.getTime() - abiertoEn.getTime()
+  const umbral = duracion < 86_400_000 ? duracion / 4 : 2 * 86_400_000
+  return restante <= umbral ? 'por vencer' : 'vigente'
+}

@@ -38,3 +38,28 @@ h1, h2, h3, h4 {
 }
 .splash-dot:nth-child(2) { animation-delay: 160ms; }
 .splash-dot:nth-child(3) { animation-delay: 320ms; }
+
+/* Cotización de evento en PDF (window.print): sólo se imprime la hoja .solo-imprimir. */
+.solo-imprimir {
+  display: none;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .solo-imprimir,
+  .solo-imprimir * {
+    visibility: visible;
+  }
+  .solo-imprimir {
+    display: block;
+    position: absolute;
+    inset: 0 0 auto 0;
+    padding: 24px;
+    background: #fff;
+    color: #000;
+  }
+  .solo-imprimir td {
+    padding: 4px 0;
+  }
+}
